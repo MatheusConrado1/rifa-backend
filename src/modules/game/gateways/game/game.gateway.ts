@@ -9,8 +9,8 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Table } from './entities/table.entity';
-import { Player } from './entities/player.entity';
+import { Table } from '../../entities/table.entity';
+import { Player } from '../../entities/player.entity';
 
 @WebSocketGateway({
   cors: {
