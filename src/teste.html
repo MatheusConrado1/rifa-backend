@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-width=1.0">
+    <title>Teste Rifa WebSockets</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
+        .box { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
+        #logs { background: #f4f4f4; padding: 10px; height: 300px; overflow-y: auto; border: 1px solid #ddd; font-family: monospace; font-size: 14px;}
+        input, button { padding: 8px; margin: 5px 0; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <h2>Mesa de Rifa (Teste da Máquina de Estados)</h2>
+
+    <div class="box">
+        <label>Seu Nome:</label>
+        <input type="text" id="nome" placeholder="Ex: Matheus">
+        <label>ID da Mesa:</label>
+        <input type="text" id="mesaId" value="sala-1">
+        <br>
+        <button onclick="entrarNaMesa()">1. Entrar na Mesa</button>
+        <button onclick="iniciarJogo()" style="background-color: #28a745; color: white;">2. Iniciar Rodada</button>
+    </div>
+
+    <div class="box">
+        <h3>Logs da Partida</h3>
+        <div id="logs"></div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <script>
+        const socket = io('http://localhost:3000', {
+            transports: ['websocket'],
+            upgrade: false
+        });
+        const logsDiv = document.getElementById('logs');
+
+        function addLog(mensagem, cor = 'black') {
+            const p = document.createElement('p');
+            p.style.color = cor;
+            p.style.margin = '5px 0';
+            p.textContent = `> ${mensagem}`;
+            logsDiv.appendChild(p);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+
+        socket.on('connect', () => addLog('🟢 Conectado!', 'green'));
+        socket.on('jogador_entrou', (data) => addLog(`📢 ${data.mensagem} (Total: ${data.jogadoresTotais})`, 'blue'));
+
+        socket.on('rodada_iniciada', (data) => {
+            addLog(`🎲 ${data.mensagem}`, 'purple');
+            addLog(`💰 Pote atual: ${data.mesa.pot} moedas`, 'purple');
+            
+            if(data.mesa.manilhaCard) {
+                addLog(`Manilha revelada: ${data.mesa.manilhaCard.suit} (Carta: ${data.mesa.manilhaCard.rank})`, 'purple');
+            }
+            
+            console.log("ESTADO COMPLETO DA MESA:", data.mesa);
+            addLog(`👀 Abra o Console (F12) para ver a Macaca, sua mão e as cartas dos outros!`, 'red');
+        });
+
+        function entrarNaMesa() {
+            const nome = document.getElementById('nome').value || 'Anônimo';
+            const mesaId = document.getElementById('mesaId').value || 'sala-1';
+            socket.emit('entrar_na_mesa', { nome, mesaId }, (res) => {
+                if (res.status === 'erro') addLog(`Erro: ${res.mensagem}`, 'red');
+                else addLog(`✅ ${res.mensagem}`, 'green');
+            });
+        }
+
+        function iniciarJogo() {
+            const mesaId = document.getElementById('mesaId').value || 'sala-1';
+            socket.emit('iniciar_jogo', { mesaId }, (res) => {
+                if (res.status === 'erro') addLog(`Erro ao iniciar: ${res.mensagem}`, 'red');
+            });
+        }
+    </script>
+</body>
+</html>
