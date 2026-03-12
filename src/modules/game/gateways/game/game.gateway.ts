@@ -89,11 +89,34 @@ export class GameGateway
 
     try {
       table.startRound();
-      console.log(`🎲 Rodada iniciada na mesa ${data.mesaId}!`);
+      console.log(`Rodada iniciada na mesa ${data.mesaId}!`);
 
       for (const player of table.players) {
         this.server.to(player.id).emit('rodada_iniciada', {
           mensagem: 'O jogo começou!',
+          mesa: table.getSanitizedState(player.id),
+        });
+      }
+
+      return { status: 'sucesso' };
+    } catch (error: any) {
+      return { status: 'erro', mensagem: error.message };
+    }
+  }
+
+  @SubscribeMessage('acao_aposta')
+  handleBettingAction(
+    @MessageBody() data: { mesaId: string; acao: 'PLAY' | 'FOLD' | 'MACACA' },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const table = this.activeTables.get(data.mesaId);
+    if (!table) return { status: 'erro', mensagem: 'Mesa não encontrada.' };
+
+    try {
+      table.processBettingAction(client.id, data.acao);
+
+      for (const player of table.players) {
+        this.server.to(player.id).emit('estado_atualizado', {
           mesa: table.getSanitizedState(player.id),
         });
       }

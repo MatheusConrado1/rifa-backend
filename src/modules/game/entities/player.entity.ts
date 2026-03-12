@@ -6,6 +6,7 @@ export class Player {
   public hand: Card[] = [];
   public coins: number = STARTING_COINS;
   public isPlayingRound: boolean = false;
+  public hasActed: boolean = false;
   public tricksWon: number = 0;
 
   constructor(
@@ -13,11 +14,14 @@ export class Player {
     public readonly name: string,
   ) {}
 
-  payCoins(amount: number): void {
+  payCoins(amount: number): number {
     if (this.coins >= amount) {
       this.coins -= amount;
+      return amount;
     } else {
+      const allInAmount = this.coins;
       this.coins = 0;
+      return allInAmount;
     }
   }
 }
