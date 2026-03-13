@@ -9,7 +9,7 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Table } from '../../entities/table.entity';
+import { GamePhase, Table } from '../../entities/table.entity';
 import { Player } from '../../entities/player.entity';
 
 @WebSocketGateway({
@@ -87,6 +87,13 @@ export class GameGateway
       return { status: 'erro', mensagem: 'Mesa não encontrada.' };
     }
 
+    if (table.phase === GamePhase.GAME_OVER) {
+      return {
+        status: 'erro',
+        mensagem: 'O jogo já acabou! A mesa foi encerrada.',
+      };
+    }
+
     try {
       table.startRound();
       console.log(`Rodada iniciada na mesa ${data.mesaId}!`);
@@ -114,6 +121,29 @@ export class GameGateway
 
     try {
       table.processBettingAction(client.id, data.acao);
+
+      for (const player of table.players) {
+        this.server.to(player.id).emit('estado_atualizado', {
+          mesa: table.getSanitizedState(player.id),
+        });
+      }
+
+      return { status: 'sucesso' };
+    } catch (error: any) {
+      return { status: 'erro', mensagem: error.message };
+    }
+  }
+
+  @SubscribeMessage('jogar_carta')
+  handlePlayCard(
+    @MessageBody() data: { mesaId: string; suit: string; rank: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const table = this.activeTables.get(data.mesaId);
+    if (!table) return { status: 'erro', mensagem: 'Mesa não encontrada.' };
+
+    try {
+      table.playCard(client.id, data.suit, data.rank);
 
       for (const player of table.players) {
         this.server.to(player.id).emit('estado_atualizado', {

@@ -27,8 +27,12 @@ export class Deck {
     }
   }
 
-  public draw(): Card | undefined {
-    return this.cards.pop();
+  public draw(): Card {
+    const card = this.cards.pop();
+    if (!card) {
+      throw new Error('Erro fatal: O baralho está vazio!');
+    }
+    return card;
   }
 
   public get remainingCards(): number {

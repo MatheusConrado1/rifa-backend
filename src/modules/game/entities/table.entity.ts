@@ -7,6 +7,7 @@ export enum GamePhase {
   BETTING_PHASE = 'BETTING_PHASE',
   PLAYING_CARDS = 'PLAYING_CARDS',
   ROUND_END = 'ROUND_END',
+  GAME_OVER = 'GAME_OVER',
 }
 
 export type BettingAction = 'PLAY' | 'FOLD' | 'MACACA';
@@ -28,6 +29,7 @@ export class Table {
   public phase: GamePhase = GamePhase.WAITING_PLAYERS;
 
   public pot: number = 0;
+  public contestedPot: number = 0;
   public readonly ROUND_BASELINE = 3;
   public macaca: Card[] = [];
   public manilha: Suit | null = null;
@@ -62,6 +64,13 @@ export class Table {
     this.pot += dealerPayment;
 
     for (const player of this.players) {
+      if (player.pendingPenalty > 0) {
+        this.pot += player.payCoins(player.pendingPenalty);
+        player.pendingPenalty = 0;
+      }
+    }
+
+    for (const player of this.players) {
       player.hand = [this.deck.draw(), this.deck.draw(), this.deck.draw()];
       player.isPlayingRound = false;
       player.hasActed = false;
@@ -94,16 +103,19 @@ export class Table {
     if (action === 'FOLD') {
       currentPlayer.isPlayingRound = false;
     } else if (action === 'PLAY') {
-      const payment = currentPlayer.payCoins(this.ROUND_BASELINE);
-      this.pot += payment;
+      if (!currentPlayer.hasPaid) {
+        const payment = currentPlayer.payCoins(this.ROUND_BASELINE);
+        this.pot += payment;
+      }
       currentPlayer.isPlayingRound = true;
     } else if (action === 'MACACA') {
       if (this.macaca.length === 0) {
         throw new Error('Alguém já pegou a Macaca nesta rodada!');
       }
-
-      const payment = currentPlayer.payCoins(this.ROUND_BASELINE);
-      this.pot += payment;
+      if (!currentPlayer.hasPaid) {
+        const payment = currentPlayer.payCoins(this.ROUND_BASELINE);
+        this.pot += payment;
+      }
       currentPlayer.isPlayingRound = true;
 
       currentPlayer.hand = [...this.macaca];
@@ -129,6 +141,7 @@ export class Table {
         this.prepareNextRound();
       } else {
         this.phase = GamePhase.PLAYING_CARDS;
+        this.contestedPot = this.pot;
         this.setNextActivePlayerTurn(this.dealerIndex);
       }
     } else {
@@ -170,7 +183,42 @@ export class Table {
       throw new Error('Você não tem essa carta na mão.');
     }
 
+    const cardToPlay = currentPlayer.hand[cardIndex];
+    const activePlayersCount = this.players.filter(
+      (p) => p.isPlayingRound,
+    ).length;
+
+    // Trunfo para 3
+    if (activePlayersCount >= 3 && this.tricksPlayed === 0) {
+      const hasManilha = currentPlayer.hand.some(
+        (c) => c.suit === this.manilha,
+      );
+
+      if (hasManilha && cardToPlay.suit !== this.manilha) {
+        throw new Error(
+          `Trunfo para 3! Você é obrigado a jogar um trunfo (${this.manilha}).`,
+        );
+      }
+    }
+
+    // Obrigação de Servir
+    if (this.currentTrickCards.length > 0) {
+      const hasServiceOrManilha = currentPlayer.hand.some(
+        (c) => c.suit === this.service || c.suit === this.manilha,
+      );
+      if (hasServiceOrManilha) {
+        const isValidPlay =
+          cardToPlay.suit === this.service || cardToPlay.suit === this.manilha;
+        if (!isValidPlay) {
+          throw new Error(
+            `Obrigação de servir! Você deve jogar uma carta de ${this.service} (naipe da mesa) ou ${this.manilha} (manilha).`,
+          );
+        }
+      }
+    }
+
     const [playedCard] = currentPlayer.hand.splice(cardIndex, 1);
+    // Naipe da mesa
     if (this.currentTrickCards.length === 0) {
       this.service = playedCard.suit;
     }
@@ -178,10 +226,6 @@ export class Table {
       playerId: currentPlayer.id,
       card: playedCard,
     });
-
-    const activePlayersCount = this.players.filter(
-      (p) => p.isPlayingRound,
-    ).length;
 
     if (this.currentTrickCards.length === activePlayersCount) {
       this.evaluateTrick();
@@ -209,6 +253,7 @@ export class Table {
     }
 
     this.currentTrickCards = [];
+    this.service = null;
     this.tricksPlayed += 1;
 
     if (this.tricksPlayed === 3) {
@@ -224,6 +269,12 @@ export class Table {
   private endRound(): void {
     const activePlayers = this.players.filter((p) => p.isPlayingRound);
 
+    for (const player of activePlayers) {
+      if (player.tricksWon === 0) {
+        player.pendingPenalty = this.contestedPot;
+      }
+    }
+
     const coinPerTrick = Math.floor(this.pot / 3);
     let totalPayout = 0;
 
@@ -233,6 +284,7 @@ export class Table {
         player.coins += payout;
         totalPayout += payout;
       }
+      player.hasPaid = false;
     }
 
     this.pot -= totalPayout;
@@ -241,10 +293,32 @@ export class Table {
   }
 
   private prepareNextRound(): void {
-    this.dealerIndex = (this.dealerIndex + 1) % this.players.length;
+    let nextDealerIndex = (this.dealerIndex + 1) % this.players.length;
+
+    const survivingCount = this.players.filter((p) => p.coins > 0).length;
+    if (survivingCount > 1) {
+      while (this.players[nextDealerIndex].coins <= 0) {
+        nextDealerIndex = (nextDealerIndex + 1) % this.players.length;
+      }
+    }
+
+    const nextDealerId = this.players[nextDealerIndex].id;
+
+    this.players = this.players.filter((p) => p.coins > 0);
+
+    if (this.players.length === 1) {
+      this.phase = GamePhase.GAME_OVER;
+      return;
+    } else if (this.players.length === 0) {
+      this.phase = GamePhase.GAME_OVER;
+      return;
+    }
+
+    this.dealerIndex = this.players.findIndex((p) => p.id === nextDealerId);
 
     this.currentTrickCards = [];
     this.tricksPlayed = 0;
+    this.contestedPot = 0;
 
     this.phase = GamePhase.ROUND_END;
   }
@@ -255,6 +329,8 @@ export class Table {
       phase: this.phase,
       pot: this.pot,
       manilha: this.manilha,
+      service: this.service,
+      currentTrickCards: this.currentTrickCards,
       manilhaCard: this.manilhaCard,
       bottomCard: this.bottomCard,
       dealerIndex: this.dealerIndex,
@@ -267,6 +343,8 @@ export class Table {
           name: p.name,
           coins: p.coins,
           isPlayingRound: p.isPlayingRound,
+          hasActed: p.hasActed,
+          pendingPenalty: p.pendingPenalty,
           tricksWon: p.tricksWon,
           hand: isMe ? p.hand : [],
           cardCount: p.hand.length,
