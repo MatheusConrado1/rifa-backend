@@ -23,12 +23,27 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Backend do jogo Rifa com WebSocket e autenticação JWT.
 
 ## Project setup
 
 ```bash
 $ npm install
+```
+
+## Environment
+
+Crie um arquivo `.env` com:
+
+```bash
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASS=postgres
+DB_NAME=rifa
+DB_SYNC=true
+JWT_SECRET=dev-secret
+JWT_EXPIRES_IN=7d
 ```
 
 ## Compile and run the project
@@ -43,6 +58,17 @@ $ npm run start:dev
 # production mode
 $ npm run start:prod
 ```
+
+## Auth
+
+- `POST /auth/register` body: `{ "username": "user", "password": "secret123" }`
+- `POST /auth/login` body: `{ "username": "user", "password": "secret123" }`
+
+O login retorna `accessToken` (JWT).
+
+## WebSocket
+
+Conecte usando header `Authorization: Bearer <token>` no handshake.
 
 ## Run tests
 
