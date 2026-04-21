@@ -204,6 +204,15 @@ input {
   border-color: rgba(226, 183, 93, 0.6);
 }
 
+.tag-winner {
+  border-color: rgba(90, 196, 139, 0.65);
+  background: rgba(24, 74, 49, 0.8);
+}
+
+.tag-last-winner {
+  border-color: rgba(147, 192, 166, 0.55);
+}
+
 .lobby-form {
   display: grid;
   gap: 0.75rem;
@@ -274,6 +283,15 @@ input {
   border-color: rgba(226, 183, 93, 0.6);
 }
 
+.players-list li.trick-winner {
+  border-color: rgba(90, 196, 139, 0.7);
+  box-shadow: inset 0 0 0 1px rgba(90, 196, 139, 0.28);
+}
+
+.players-list li.last-winner {
+  border-color: rgba(147, 192, 166, 0.45);
+}
+
 .players-list p {
   margin: 0.22rem 0 0;
   font-size: 0.85rem;
@@ -291,6 +309,35 @@ input {
 
 .info-row {
   margin-top: 0.8rem;
+}
+
+.winner-banner {
+  margin: 0 0 0.55rem;
+  border: 1px solid rgba(90, 196, 139, 0.62);
+  background: rgba(18, 59, 39, 0.76);
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.9rem;
+  animation: pulse-winner 900ms ease;
+}
+
+.winner-banner.subtle {
+  border-color: rgba(147, 192, 166, 0.38);
+  background: rgba(20, 45, 36, 0.66);
+}
+
+.trick-card-wrap {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.trick-card-wrap.winning-card {
+  transform: translateY(-3px);
+}
+
+.trick-card-wrap.winning-card .playing-card {
+  outline: 2px solid rgba(90, 196, 139, 0.82);
+  box-shadow: 0 0 0 3px rgba(90, 196, 139, 0.22), 0 8px 16px rgba(0, 0, 0, 0.28);
 }
 
 .playing-card {
@@ -347,6 +394,17 @@ input {
 
 small {
   color: var(--text-muted);
+}
+
+@keyframes pulse-winner {
+  0% {
+    transform: scale(0.985);
+    opacity: 0.65;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 @media (max-width: 980px) {

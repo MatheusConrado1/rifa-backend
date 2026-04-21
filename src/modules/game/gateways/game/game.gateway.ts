@@ -33,8 +33,21 @@ export class GameGateway
   server: Server;
 
   private activeTables = new Map<string, Table>();
+  private readonly TRICK_RESOLUTION_DELAY_MS = 1800;
 
   constructor(private readonly jwtService: JwtService) {}
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private broadcastTableState(table: Table): void {
+    for (const player of table.players) {
+      this.server.to(player.id).emit('estado_atualizado', {
+        mesa: table.getSanitizedState(player.id),
+      });
+    }
+  }
 
   afterInit(server: Server) {
     console.log('Gateway do Jogo Inicializado com sucesso!');
@@ -111,11 +124,7 @@ export class GameGateway
       jogadoresTotais: table.players.length,
     });
 
-    for (const player of table.players) {
-      this.server.to(player.id).emit('estado_atualizado', {
-        mesa: table.getSanitizedState(player.id),
-      });
-    }
+    this.broadcastTableState(table);
 
     return {
       status: 'sucesso',
@@ -124,10 +133,10 @@ export class GameGateway
   }
 
   @SubscribeMessage('iniciar_jogo')
-  handleStartGame(
+  async handleStartGame(
     @MessageBody() data: { mesaId: string },
     @ConnectedSocket() client: Socket,
-  ) {
+  ): Promise<{ status: string; mensagem?: string }> {
     if (!data?.mesaId) {
       return { status: 'erro', mensagem: 'Payload inválido.' };
     }
@@ -165,10 +174,10 @@ export class GameGateway
   }
 
   @SubscribeMessage('acao_aposta')
-  handleBettingAction(
+  async handleBettingAction(
     @MessageBody() data: { mesaId: string; acao: 'PLAY' | 'FOLD' | 'MACACA' },
     @ConnectedSocket() client: Socket,
-  ) {
+  ): Promise<{ status: string; mensagem?: string }> {
     if (!data?.mesaId || !data?.acao) {
       return { status: 'erro', mensagem: 'Payload inválido.' };
     }
@@ -181,11 +190,7 @@ export class GameGateway
     try {
       table.processBettingAction(client.id, data.acao);
 
-      for (const player of table.players) {
-        this.server.to(player.id).emit('estado_atualizado', {
-          mesa: table.getSanitizedState(player.id),
-        });
-      }
+      this.broadcastTableState(table);
 
       return { status: 'sucesso' };
     } catch (error: any) {
@@ -194,10 +199,10 @@ export class GameGateway
   }
 
   @SubscribeMessage('jogar_carta')
-  handlePlayCard(
+  async handlePlayCard(
     @MessageBody() data: { mesaId: string; suit: string; rank: string },
     @ConnectedSocket() client: Socket,
-  ) {
+  ): Promise<{ status: string; mensagem?: string }> {
     if (!data?.mesaId || !data?.suit || !data?.rank) {
       return { status: 'erro', mensagem: 'Payload inválido.' };
     }
@@ -210,10 +215,12 @@ export class GameGateway
     try {
       table.playCard(client.id, data.suit, data.rank);
 
-      for (const player of table.players) {
-        this.server.to(player.id).emit('estado_atualizado', {
-          mesa: table.getSanitizedState(player.id),
-        });
+      this.broadcastTableState(table);
+
+      if (table.hasPendingTrickResolution()) {
+        await this.sleep(this.TRICK_RESOLUTION_DELAY_MS);
+        table.resolveCurrentTrick();
+        this.broadcastTableState(table);
       }
 
       return { status: 'sucesso' };

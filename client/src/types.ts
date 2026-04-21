@@ -40,6 +40,10 @@ export type TableState = {
   manilha: Suit | null;
   service: Suit | null;
   currentTrickCards: TrickCard[];
+  isResolvingTrick: boolean;
+  pendingTrickWinnerId: string | null;
+  pendingTrickWinningCard: Card | null;
+  lastTrickWinnerId: string | null;
   manilhaCard: Card | null;
   bottomCard: Card | null;
   dealerIndex: number;

@@ -28,6 +28,12 @@ export function GameBoard({
 }: GameBoardProps) {
   const me = table.players.find((player) => player.id === meId) ?? null;
   const currentPlayer = table.players[table.currentTurnIndex] ?? null;
+  const pendingWinner = table.players.find(
+    (player) => player.id === table.pendingTrickWinnerId,
+  );
+  const lastWinner = table.players.find(
+    (player) => player.id === table.lastTrickWinnerId,
+  );
 
   const isMyTurn = me != null && currentPlayer?.id === me.id;
   const canStartRound =
@@ -35,7 +41,8 @@ export function GameBoard({
     table.players.length >= 2;
 
   const canBet = table.phase === 'BETTING_PHASE' && isMyTurn;
-  const canPlayCard = table.phase === 'PLAYING_CARDS' && isMyTurn;
+  const canPlayCard =
+    table.phase === 'PLAYING_CARDS' && isMyTurn && !table.isResolvingTrick;
 
   return (
     <div className="table-layout">
@@ -59,19 +66,38 @@ export function GameBoard({
               const isTurn = table.currentTurnIndex === index;
               const isDealer = table.dealerIndex === index;
               const isMePlayer = meId === player.id;
+              const isPendingWinner = table.pendingTrickWinnerId === player.id;
+              const isLastWinner =
+                !table.pendingTrickWinnerId &&
+                table.lastTrickWinnerId === player.id;
+
+              const playerClasses = [
+                isTurn ? 'turn' : '',
+                isPendingWinner ? 'trick-winner' : '',
+                isLastWinner ? 'last-winner' : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
 
               return (
-                <li key={player.id} className={isTurn ? 'turn' : ''}>
+                <li key={player.id} className={playerClasses}>
                   <div>
                     <strong>{player.name}</strong>
                     <p>
-                      moedas {player.coins} | cartas {player.cardCount} | vazas {player.tricksWon}
+                      moedas {player.coins} | cartas {player.cardCount} | vazas{' '}
+                      {player.tricksWon}
                     </p>
                   </div>
                   <div className="tag-row">
-                    {isMePlayer ? <span className="tag">voce</span> : null}
-                    {isDealer ? <span className="tag">dealer</span> : null}
-                    {isTurn ? <span className="tag tag-turn">vez</span> : null}
+                    {/* {isMePlayer ? <span className="tag">voce</span> : null} */}
+                    {isDealer ? <span className="tag">Dealer</span> : null}
+                    {isTurn ? <span className="tag tag-turn">Vez</span> : null}
+                    {isPendingWinner ? (
+                      <span className="tag tag-winner">venceu vaza</span>
+                    ) : null}
+                    {isLastWinner ? (
+                      <span className="tag tag-last-winner">ultima vaza</span>
+                    ) : null}
                   </div>
                 </li>
               );
@@ -81,14 +107,42 @@ export function GameBoard({
 
         <article className="panel trick-panel">
           <h3>Cartas na mesa</h3>
+          {table.isResolvingTrick && pendingWinner ? (
+            <p className="winner-banner">
+              {pendingWinner.name} ganhou esta vaza!
+            </p>
+          ) : null}
+          {!table.isResolvingTrick && lastWinner ? (
+            <p className="winner-banner subtle">
+              Ultima vaza: {lastWinner.name}
+            </p>
+          ) : null}
+
           <div className="trick-row">
             {table.currentTrickCards.length === 0 ? (
               <p className="muted">Nenhuma carta jogada nesta vaza.</p>
             ) : (
               table.currentTrickCards.map((played) => {
-                const player = table.players.find((p) => p.id === played.playerId);
+                const player = table.players.find(
+                  (p) => p.id === played.playerId,
+                );
+                const isWinningCard =
+                  table.pendingTrickWinnerId === played.playerId &&
+                  table.pendingTrickWinningCard?.rank === played.card.rank &&
+                  table.pendingTrickWinningCard?.suit === played.card.suit;
+
+                const cardWrapClasses = [
+                  'trick-card-wrap',
+                  isWinningCard ? 'winning-card' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ');
+
                 return (
-                  <div key={`${played.playerId}-${played.card.suit}-${played.card.rank}`}>
+                  <div
+                    key={`${played.playerId}-${played.card.suit}-${played.card.rank}`}
+                    className={cardWrapClasses}
+                  >
                     <CardView card={played.card} />
                     <small>{player?.name ?? played.playerId}</small>
                   </div>
@@ -100,11 +154,19 @@ export function GameBoard({
           <div className="info-row">
             <div>
               <small>Manilha aberta</small>
-              {table.manilhaCard ? <CardView card={table.manilhaCard} /> : <p>-</p>}
+              {table.manilhaCard ? (
+                <CardView card={table.manilhaCard} />
+              ) : (
+                <p>-</p>
+              )}
             </div>
             <div>
               <small>Fundo do deck</small>
-              {table.bottomCard ? <CardView card={table.bottomCard} /> : <p>-</p>}
+              {table.bottomCard ? (
+                <CardView card={table.bottomCard} />
+              ) : (
+                <p>-</p>
+              )}
             </div>
           </div>
         </article>

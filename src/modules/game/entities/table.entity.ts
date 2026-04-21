@@ -42,6 +42,10 @@ export class Table {
 
   public currentTrickCards: { playerId: string; card: Card }[] = [];
   public tricksPlayed: number = 0;
+  public isResolvingTrick: boolean = false;
+  public pendingTrickWinnerId: string | null = null;
+  public pendingTrickWinningCard: Card | null = null;
+  public lastTrickWinnerId: string | null = null;
 
   constructor(public readonly id: string) {}
 
@@ -83,6 +87,10 @@ export class Table {
     this.bottomCard = this.deck.bottomCard;
 
     this.currentTurnIndex = (this.dealerIndex + 1) % this.players.length;
+    this.isResolvingTrick = false;
+    this.pendingTrickWinnerId = null;
+    this.pendingTrickWinningCard = null;
+    this.lastTrickWinnerId = null;
     this.phase = GamePhase.BETTING_PHASE;
   }
 
@@ -170,6 +178,9 @@ export class Table {
     if (this.phase !== GamePhase.PLAYING_CARDS) {
       throw new Error('Não estamos na fase de jogar cartas.');
     }
+    if (this.isResolvingTrick) {
+      throw new Error('Aguarde, estamos resolvendo a vaza atual.');
+    }
 
     const currentPlayer = this.players[this.currentTurnIndex];
     if (currentPlayer.id !== playerId) {
@@ -221,6 +232,7 @@ export class Table {
     // Naipe da mesa
     if (this.currentTrickCards.length === 0) {
       this.service = playedCard.suit;
+      this.lastTrickWinnerId = null;
     }
     this.currentTrickCards.push({
       playerId: currentPlayer.id,
@@ -228,15 +240,16 @@ export class Table {
     });
 
     if (this.currentTrickCards.length === activePlayersCount) {
-      this.evaluateTrick();
+      this.evaluateTrickPreview();
     } else {
       this.setNextActivePlayerTurn(this.currentTurnIndex);
     }
   }
 
-  private evaluateTrick(): void {
+  private evaluateTrickPreview(): void {
     let winningPlayerId = '';
     let maxPower = -1;
+    let winningCard: Card | null = null;
 
     for (const trick of this.currentTrickCards) {
       const power = this.getCardPower(trick.card);
@@ -244,24 +257,43 @@ export class Table {
       if (power > maxPower) {
         maxPower = power;
         winningPlayerId = trick.playerId;
+        winningCard = trick.card;
       }
     }
 
-    const winner = this.players.find((p) => p.id === winningPlayerId);
+    this.isResolvingTrick = true;
+    this.pendingTrickWinnerId = winningPlayerId;
+    this.pendingTrickWinningCard = winningCard;
+  }
+
+  hasPendingTrickResolution(): boolean {
+    return this.isResolvingTrick;
+  }
+
+  resolveCurrentTrick(): void {
+    if (!this.isResolvingTrick || !this.pendingTrickWinnerId) {
+      return;
+    }
+
+    const winner = this.players.find((p) => p.id === this.pendingTrickWinnerId);
     if (winner) {
       winner.tricksWon += 1;
     }
 
+    const winnerId = this.pendingTrickWinnerId;
+    const winnerIndex = this.players.findIndex((p) => p.id === winnerId);
+
     this.currentTrickCards = [];
     this.service = null;
     this.tricksPlayed += 1;
+    this.isResolvingTrick = false;
+    this.lastTrickWinnerId = winnerId;
+    this.pendingTrickWinnerId = null;
+    this.pendingTrickWinningCard = null;
 
     if (this.tricksPlayed === 3) {
       this.endRound();
-    } else {
-      const winnerIndex = this.players.findIndex(
-        (p) => p.id === winningPlayerId,
-      );
+    } else if (winnerIndex >= 0) {
       this.currentTurnIndex = winnerIndex;
     }
   }
@@ -319,6 +351,10 @@ export class Table {
     this.currentTrickCards = [];
     this.tricksPlayed = 0;
     this.contestedPot = 0;
+    this.isResolvingTrick = false;
+    this.pendingTrickWinnerId = null;
+    this.pendingTrickWinningCard = null;
+    this.lastTrickWinnerId = null;
 
     this.phase = GamePhase.ROUND_END;
   }
@@ -331,6 +367,10 @@ export class Table {
       manilha: this.manilha,
       service: this.service,
       currentTrickCards: this.currentTrickCards,
+      isResolvingTrick: this.isResolvingTrick,
+      pendingTrickWinnerId: this.pendingTrickWinnerId,
+      pendingTrickWinningCard: this.pendingTrickWinningCard,
+      lastTrickWinnerId: this.lastTrickWinnerId,
       manilhaCard: this.manilhaCard,
       bottomCard: this.bottomCard,
       dealerIndex: this.dealerIndex,
