@@ -1,0 +1,234 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { GameBoard } from '../components/GameBoard';
+import { getSocket, disconnectSocket } from '../services/socket';
+import {
+  getState,
+  resetGameState,
+  setErrorMessage,
+  setLobbyData,
+  setSocketConnected,
+  setStatusMessage,
+  setTableState,
+} from '../state';
+import { useAppState } from '../hooks/useAppState';
+import type { BettingAction, Rank, Suit, TableState } from '../types';
+
+type SocketAck = {
+  status: 'sucesso' | 'erro';
+  mensagem?: string;
+};
+
+function emitWithAck<TPayload>(
+  eventName: string,
+  payload: TPayload,
+): Promise<SocketAck> {
+  const token = getState().auth.token;
+  if (!token) {
+    return Promise.reject(new Error('Sessao expirada.'));
+  }
+
+  const socket = getSocket(token);
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      reject(new Error('Servidor demorou para responder.'));
+    }, 7000);
+
+    socket.emit(eventName, payload, (response: SocketAck) => {
+      window.clearTimeout(timeout);
+      resolve(response);
+    });
+  });
+}
+
+export function TablePage() {
+  const navigate = useNavigate();
+  const params = useParams();
+  const app = useAppState();
+  const [mySocketId, setMySocketId] = useState<string | null>(null);
+  const [sendingAction, setSendingAction] = useState(false);
+
+  const routeTableId = useMemo(() => (params.mesaId ?? '').trim(), [params.mesaId]);
+  const playerName = app.game.playerName || app.auth.username || '';
+
+  useEffect(() => {
+    if (!routeTableId || !app.auth.token) {
+      return;
+    }
+
+    if (!playerName) {
+      setErrorMessage('Nome do jogador ausente. Volte ao lobby.');
+      return;
+    }
+
+    setLobbyData(routeTableId, playerName);
+
+    const socket = getSocket(app.auth.token);
+
+    const onConnect = () => {
+      setMySocketId(socket.id ?? null);
+      setSocketConnected(true);
+      setErrorMessage('');
+      setStatusMessage('Conectado ao servidor. Entrando na mesa...');
+
+      socket.emit(
+        'entrar_na_mesa',
+        { nome: playerName, mesaId: routeTableId },
+        (response: SocketAck) => {
+          if (response?.status === 'erro') {
+            setErrorMessage(response.mensagem ?? 'Falha ao entrar na mesa.');
+          } else {
+            setStatusMessage(response?.mensagem ?? 'Entrada confirmada.');
+          }
+        },
+      );
+    };
+
+    const onDisconnect = () => {
+      setSocketConnected(false);
+      setStatusMessage('Conexao perdida. Tentando reconectar...');
+    };
+
+    const onStateUpdated = (payload: { mesa: TableState }) => {
+      if (payload?.mesa) {
+        setTableState(payload.mesa);
+      }
+    };
+
+    const onRoundStarted = (payload: { mensagem?: string; mesa?: typeof app.game.table }) => {
+      setStatusMessage(payload?.mensagem ?? 'Rodada iniciada!');
+      if (payload?.mesa) {
+        setTableState(payload.mesa);
+      }
+    };
+
+    const onPlayerJoined = (payload: { mensagem?: string }) => {
+      if (payload?.mensagem) {
+        setStatusMessage(payload.mensagem);
+      }
+    };
+
+    const onError = (payload: { message?: string }) => {
+      setErrorMessage(payload?.message ?? 'Erro de comunicacao com o servidor.');
+    };
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.on('estado_atualizado', onStateUpdated);
+    socket.on('rodada_iniciada', onRoundStarted);
+    socket.on('jogador_entrou', onPlayerJoined);
+    socket.on('error', onError);
+
+    if (socket.connected) {
+      onConnect();
+    }
+
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.off('estado_atualizado', onStateUpdated);
+      socket.off('rodada_iniciada', onRoundStarted);
+      socket.off('jogador_entrou', onPlayerJoined);
+      socket.off('error', onError);
+    };
+  }, [app.auth.token, playerName, routeTableId]);
+
+  if (!app.auth.token) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!routeTableId) {
+    return <Navigate to="/lobby" replace />;
+  }
+
+  async function runAction(action: () => Promise<SocketAck>) {
+    setSendingAction(true);
+    setErrorMessage('');
+
+    try {
+      const response = await action();
+      if (response.status === 'erro') {
+        setErrorMessage(response.mensagem ?? 'Acao recusada.');
+      } else if (response.mensagem) {
+        setStatusMessage(response.mensagem);
+      }
+    } catch (actionError) {
+      setErrorMessage(
+        actionError instanceof Error
+          ? actionError.message
+          : 'Falha ao enviar acao para o servidor.',
+      );
+    } finally {
+      setSendingAction(false);
+    }
+  }
+
+  function handleLeaveTable() {
+    disconnectSocket();
+    resetGameState();
+    navigate('/lobby', { replace: true });
+  }
+
+  function handleStartRound() {
+    runAction(() => emitWithAck('iniciar_jogo', { mesaId: routeTableId }));
+  }
+
+  function handleBetAction(action: BettingAction) {
+    runAction(() => emitWithAck('acao_aposta', { mesaId: routeTableId, acao: action }));
+  }
+
+  function handlePlayCard(suit: string, rank: string) {
+    runAction(() =>
+      emitWithAck('jogar_carta', {
+        mesaId: routeTableId,
+        suit: suit as Suit,
+        rank: rank as Rank,
+      }),
+    );
+  }
+
+  return (
+    <main className="table-shell">
+      <header className="panel topbar">
+        <div>
+          <p className="eyebrow">RIFA AO VIVO</p>
+          <h1>Mesa {routeTableId}</h1>
+        </div>
+        <div className="button-row">
+          <Link className="btn btn-ghost" to="/lobby">
+            Lobby
+          </Link>
+          <button type="button" className="btn btn-ghost" onClick={handleLeaveTable}>
+            Sair da mesa
+          </button>
+        </div>
+      </header>
+
+      <section className="status-row">
+        <span className={`chip ${app.game.socketConnected ? 'ok' : 'warn'}`}>
+          {app.game.socketConnected ? 'socket online' : 'socket offline'}
+        </span>
+        {app.game.statusMessage ? <span className="chip">{app.game.statusMessage}</span> : null}
+        {app.game.errorMessage ? <span className="chip error">{app.game.errorMessage}</span> : null}
+      </section>
+
+      {app.game.table ? (
+        <GameBoard
+          table={app.game.table}
+          meId={mySocketId}
+          onStartRound={handleStartRound}
+          onBetAction={handleBetAction}
+          onPlayCard={handlePlayCard}
+          sendingAction={sendingAction}
+        />
+      ) : (
+        <section className="panel waiting-panel">
+          <h2>Aguardando estado da mesa...</h2>
+          <p className="muted">
+            Assim que o servidor enviar o primeiro estado, o tabuleiro aparece aqui.
+          </p>
+        </section>
+      )}
+    </main>
+  );
+}

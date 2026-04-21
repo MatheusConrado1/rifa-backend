@@ -1,19 +1,22 @@
 export type Suit = 'clubs' | 'diamonds' | 'hearts' | 'spades';
+
 export type Rank = '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K' | 'A';
 
 export type BettingAction = 'PLAY' | 'FOLD' | 'MACACA';
 
-export interface Card {
+export type GamePhase =
+  | 'WAITING_PLAYERS'
+  | 'BETTING_PHASE'
+  | 'PLAYING_CARDS'
+  | 'ROUND_END'
+  | 'GAME_OVER';
+
+export type Card = {
   suit: Suit;
   rank: Rank;
-}
+};
 
-export interface TrickCard {
-  playerId: string;
-  card: Card;
-}
-
-export interface PlayerState {
+export type PlayerState = {
   id: string;
   name: string;
   coins: number;
@@ -23,16 +26,14 @@ export interface PlayerState {
   tricksWon: number;
   hand: Card[];
   cardCount: number;
-}
+};
 
-export type GamePhase =
-  | 'WAITING_PLAYERS'
-  | 'BETTING_PHASE'
-  | 'PLAYING_CARDS'
-  | 'ROUND_END'
-  | 'GAME_OVER';
+export type TrickCard = {
+  playerId: string;
+  card: Card;
+};
 
-export interface TableState {
+export type TableState = {
   id: string;
   phase: GamePhase;
   pot: number;
@@ -44,13 +45,8 @@ export interface TableState {
   dealerIndex: number;
   currentTurnIndex: number;
   players: PlayerState[];
-}
+};
 
-export interface ApiAck {
-  status: 'sucesso' | 'erro';
-  mensagem?: string;
-}
-
-export interface AuthResponse {
+export type AuthResponse = {
   accessToken: string;
-}
+};

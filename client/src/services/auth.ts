@@ -1,60 +1,32 @@
 import { API_BASE_URL } from '../config';
 import type { AuthResponse } from '../types';
 
-interface AuthPayload {
+type Credentials = {
   username: string;
   password: string;
-}
-
-const parseError = async (response: Response): Promise<string> => {
-  try {
-    const data = (await response.json()) as {
-      message?: string | string[];
-      error?: string;
-    };
-
-    if (Array.isArray(data.message)) {
-      return data.message.join(', ');
-    }
-
-    return data.message ?? data.error ?? 'Erro desconhecido.';
-  } catch {
-    return 'Erro desconhecido.';
-  }
 };
 
-const request = async <T>(path: string, payload: AuthPayload): Promise<T> => {
+async function request<T>(path: string, body: Credentials): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
+
+  const data = (await response.json().catch(() => ({}))) as { message?: string } & T;
 
   if (!response.ok) {
-    throw new Error(await parseError(response));
+    const message = Array.isArray(data.message) ? data.message.join(', ') : data.message;
+    throw new Error(message ?? 'Falha na requisicao.');
   }
 
-  return (await response.json()) as T;
-};
+  return data as T;
+}
 
-export const register = async (
-  username: string,
-  password: string,
-): Promise<{ id: string; username: string }> => {
-  return request<{ id: string; username: string }>('/auth/register', {
-    username,
-    password,
-  });
-};
+export async function register(credentials: Credentials): Promise<void> {
+  await request('/auth/register', credentials);
+}
 
-export const login = async (
-  username: string,
-  password: string,
-): Promise<AuthResponse> => {
-  return request<AuthResponse>('/auth/login', {
-    username,
-    password,
-  });
-};
+export async function login(credentials: Credentials): Promise<AuthResponse> {
+  return request<AuthResponse>('/auth/login', credentials);
+}
