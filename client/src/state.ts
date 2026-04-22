@@ -12,6 +12,7 @@ type GameState = {
   selectedTableId: string;
   playerName: string;
   statusMessage: string;
+  warningMessage: string;
   errorMessage: string;
   socketConnected: boolean;
 };
@@ -36,6 +37,7 @@ let state: AppState = {
     selectedTableId: localStorage.getItem(TABLE_KEY) ?? '',
     playerName: localStorage.getItem(NAME_KEY) ?? localStorage.getItem(USERNAME_KEY) ?? '',
     statusMessage: '',
+    warningMessage: '',
     errorMessage: '',
     socketConnected: false,
   },
@@ -117,6 +119,17 @@ export function setStatusMessage(message: string): void {
   notify();
 }
 
+export function setWarningMessage(message: string): void {
+  state = {
+    ...state,
+    game: {
+      ...state.game,
+      warningMessage: message,
+    },
+  };
+  notify();
+}
+
 export function setErrorMessage(message: string): void {
   state = {
     ...state,
@@ -146,6 +159,7 @@ export function resetGameState(): void {
       ...state.game,
       table: null,
       statusMessage: '',
+      warningMessage: '',
       errorMessage: '',
       socketConnected: false,
     },
