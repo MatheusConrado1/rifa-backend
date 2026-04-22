@@ -12,17 +12,11 @@ import { Server, Socket } from 'socket.io';
 import { GamePhase, Table } from '../../entities/table.entity';
 import { Player } from '../../entities/player.entity';
 import { JwtService } from '@nestjs/jwt';
+import { getCorsOrigins } from '../../../../config/cors';
 
 @WebSocketGateway({
   cors: {
-    origin: [
-      'https://127.0.0.1:5500',
-      'https://localhost:5500',
-      'http://127.0.0.1:5173',
-      'http://localhost:5173',
-      'http://127.0.0.1:4173',
-      'http://localhost:4173',
-    ],
+    origin: getCorsOrigins(),
     credentials: true,
   },
 })
