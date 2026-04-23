@@ -541,9 +541,16 @@ input {
 }
 
 .flying-card.flip-on-arrival {
-  animation:
-    fly-card var(--duration) cubic-bezier(0.2, 0.7, 0.22, 1) forwards,
-    fly-flip var(--duration) ease forwards;
+  animation: fly-card var(--duration) cubic-bezier(0.2, 0.7, 0.22, 1) forwards;
+}
+
+.flying-card.flip-on-arrival .flying-card-face {
+  animation: fly-flip var(--duration) ease forwards;
+}
+
+.flying-card-face {
+  transform-origin: center;
+  transform-style: preserve-3d;
 }
 
 .flying-card .playing-card {
@@ -702,13 +709,14 @@ small {
 }
 
 @keyframes fly-flip {
-  0%,
-  65% {
-    filter: saturate(0.95);
+  0% {
+    transform: rotateY(0deg);
+  }
+  55% {
+    transform: rotateY(90deg);
   }
   100% {
-    transform: perspective(700px) rotateY(180deg);
-    filter: saturate(1.08);
+    transform: rotateY(180deg);
   }
 }
 

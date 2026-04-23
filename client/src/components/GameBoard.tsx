@@ -53,6 +53,7 @@ export function GameBoard({
 }: GameBoardProps) {
   const [flyingCards, setFlyingCards] = useState<FlyingCard[]>([]);
   const [isDealing, setIsDealing] = useState(false);
+  const [visualMacacaCount, setVisualMacacaCount] = useState(table.macacaCount);
   const deckRef = useRef<HTMLDivElement | null>(null);
   const macacaRef = useRef<HTMLDivElement | null>(null);
   const manilhaRef = useRef<HTMLDivElement | null>(null);
@@ -131,6 +132,12 @@ export function GameBoard({
   }, []);
 
   useEffect(() => {
+    if (!isDealing) {
+      setVisualMacacaCount(table.macacaCount);
+    }
+  }, [isDealing, table.macacaCount]);
+
+  useEffect(() => {
     const prev = prevTableRef.current;
     if (!prev) {
       prevTableRef.current = table;
@@ -146,6 +153,7 @@ export function GameBoard({
 
         const runDealSequence = async () => {
           setIsDealing(true);
+          setVisualMacacaCount(0);
 
           const dealerIndex = table.dealerIndex;
           const deckPoint = asViewportPoint(deckRef.current);
@@ -179,6 +187,7 @@ export function GameBoard({
                   to: macacaPoint,
                   durationMs: flightDuration,
                 });
+                setVisualMacacaCount((current) => Math.min(current + 1, 3));
                 await wait(delayBetweenCards);
               }
 
@@ -204,7 +213,7 @@ export function GameBoard({
           enqueueFlyingCard({
             id: `reveal-manilha-${Date.now()}`,
             card: table.manilhaCard ?? { rank: 'Q', suit: 'hearts' },
-            hidden: true,
+            hidden: false,
             from: deckPoint,
             to: manilhaPoint,
             durationMs: revealDuration,
@@ -216,7 +225,7 @@ export function GameBoard({
           enqueueFlyingCard({
             id: `reveal-bottom-${Date.now()}`,
             card: table.bottomCard ?? { rank: '9', suit: 'clubs' },
-            hidden: true,
+            hidden: false,
             from: deckPoint,
             to: bottomPoint,
             durationMs: revealDuration,
@@ -224,6 +233,7 @@ export function GameBoard({
           });
 
           await wait(500);
+          setVisualMacacaCount(table.macacaCount);
           setIsDealing(false);
         };
 
@@ -282,6 +292,7 @@ export function GameBoard({
             durationMs: 240,
           });
         }
+        setVisualMacacaCount(table.macacaCount);
       }
     }
 
@@ -304,10 +315,10 @@ export function GameBoard({
             <div className="macaca-stack" ref={macacaRef}>
               <small>Macaca</small>
               <div className="macaca-cards" aria-label="Macaca na mesa">
-                {Array.from({ length: Math.max(table.macacaCount, 0) }, (_, idx) => (
+                {Array.from({ length: Math.max(visualMacacaCount, 0) }, (_, idx) => (
                   <div key={`macaca-${idx}`} className="playing-card card-back seat-card-back macaca-card" />
                 ))}
-                {table.macacaCount === 0 ? <span className="muted">vazia</span> : null}
+                {visualMacacaCount === 0 ? <span className="muted">vazia</span> : null}
               </div>
             </div>
 
@@ -458,11 +469,13 @@ export function GameBoard({
                     className={`flying-card ${fly.flipOnArrival ? 'flip-on-arrival' : ''}`}
                     style={style}
                   >
-                    {fly.hidden ? (
-                      <div className="playing-card card-back" />
-                    ) : (
-                      <CardView card={fly.card} />
-                    )}
+                    <div className="flying-card-face">
+                      {fly.hidden ? (
+                        <div className="playing-card card-back" />
+                      ) : (
+                        <CardView card={fly.card} />
+                      )}
+                    </div>
                   </div>
                 );
               })}
