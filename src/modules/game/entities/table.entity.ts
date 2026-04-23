@@ -351,6 +351,11 @@ export class Table {
     this.currentTrickCards = [];
     this.tricksPlayed = 0;
     this.contestedPot = 0;
+    this.macaca = [];
+    this.manilha = null;
+    this.manilhaCard = null;
+    this.bottomCard = null;
+    this.service = null;
     this.isResolvingTrick = false;
     this.pendingTrickWinnerId = null;
     this.pendingTrickWinningCard = null;
@@ -373,6 +378,7 @@ export class Table {
       lastTrickWinnerId: this.lastTrickWinnerId,
       manilhaCard: this.manilhaCard,
       bottomCard: this.bottomCard,
+      macacaCount: this.macaca.length,
       dealerIndex: this.dealerIndex,
       currentTurnIndex: this.currentTurnIndex,
 

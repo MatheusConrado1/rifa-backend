@@ -46,6 +46,7 @@ export type TableState = {
   lastTrickWinnerId: string | null;
   manilhaCard: Card | null;
   bottomCard: Card | null;
+  macacaCount: number;
   dealerIndex: number;
   currentTurnIndex: number;
   players: PlayerState[];

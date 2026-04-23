@@ -184,6 +184,11 @@ export class GameGateway
     try {
       table.processBettingAction(client.id, data.acao);
 
+      this.server.to(data.mesaId).emit('acao_aposta_processada', {
+        playerId: client.id,
+        acao: data.acao,
+      });
+
       this.broadcastTableState(table);
 
       return { status: 'sucesso' };

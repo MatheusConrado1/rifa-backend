@@ -10,6 +10,7 @@ import {
   setSocketConnected,
   setStatusMessage,
   setTableState,
+  setWarningMessage,
 } from '../state';
 import { useAppState } from '../hooks/useAppState';
 import type { BettingAction, Rank, Suit, TableState } from '../types';
@@ -47,8 +48,15 @@ export function TablePage() {
   const app = useAppState();
   const [mySocketId, setMySocketId] = useState<string | null>(null);
   const [sendingAction, setSendingAction] = useState(false);
+  const [lastBetAction, setLastBetAction] = useState<{
+    playerId: string;
+    action: BettingAction;
+  } | null>(null);
 
-  const routeTableId = useMemo(() => (params.mesaId ?? '').trim(), [params.mesaId]);
+  const routeTableId = useMemo(
+    () => (params.mesaId ?? '').trim(),
+    [params.mesaId],
+  );
   const playerName = app.game.playerName || app.auth.username || '';
 
   useEffect(() => {
@@ -61,6 +69,8 @@ export function TablePage() {
       return;
     }
 
+    setWarningMessage('');
+
     setLobbyData(routeTableId, playerName);
 
     const socket = getSocket(app.auth.token);
@@ -69,6 +79,7 @@ export function TablePage() {
       setMySocketId(socket.id ?? null);
       setSocketConnected(true);
       setErrorMessage('');
+      setWarningMessage('');
       setStatusMessage('Conectado ao servidor. Entrando na mesa...');
 
       socket.emit(
@@ -95,7 +106,10 @@ export function TablePage() {
       }
     };
 
-    const onRoundStarted = (payload: { mensagem?: string; mesa?: typeof app.game.table }) => {
+    const onRoundStarted = (payload: {
+      mensagem?: string;
+      mesa?: typeof app.game.table;
+    }) => {
       setStatusMessage(payload?.mensagem ?? 'Rodada iniciada!');
       if (payload?.mesa) {
         setTableState(payload.mesa);
@@ -109,7 +123,20 @@ export function TablePage() {
     };
 
     const onError = (payload: { message?: string }) => {
-      setErrorMessage(payload?.message ?? 'Erro de comunicacao com o servidor.');
+      setErrorMessage(
+        payload?.message ?? 'Erro de comunicacao com o servidor.',
+      );
+    };
+
+    const onBetActionProcessed = (payload: {
+      playerId?: string;
+      acao?: BettingAction;
+    }) => {
+      if (!payload?.playerId || !payload?.acao) {
+        return;
+      }
+
+      setLastBetAction({ playerId: payload.playerId, action: payload.acao });
     };
 
     socket.on('connect', onConnect);
@@ -117,6 +144,7 @@ export function TablePage() {
     socket.on('estado_atualizado', onStateUpdated);
     socket.on('rodada_iniciada', onRoundStarted);
     socket.on('jogador_entrou', onPlayerJoined);
+    socket.on('acao_aposta_processada', onBetActionProcessed);
     socket.on('error', onError);
 
     if (socket.connected) {
@@ -129,6 +157,7 @@ export function TablePage() {
       socket.off('estado_atualizado', onStateUpdated);
       socket.off('rodada_iniciada', onRoundStarted);
       socket.off('jogador_entrou', onPlayerJoined);
+      socket.off('acao_aposta_processada', onBetActionProcessed);
       socket.off('error', onError);
     };
   }, [app.auth.token, playerName, routeTableId]);
@@ -144,11 +173,24 @@ export function TablePage() {
   async function runAction(action: () => Promise<SocketAck>) {
     setSendingAction(true);
     setErrorMessage('');
+    setWarningMessage('');
 
     try {
       const response = await action();
       if (response.status === 'erro') {
-        setErrorMessage(response.mensagem ?? 'Acao recusada.');
+        const message = response.mensagem ?? 'Acao recusada.';
+        const warningMarkers = [
+          'Obrigação de servir',
+          'Alguém já pegou a Macaca',
+          'Trunfo para 3',
+        ];
+
+        if (warningMarkers.some((marker) => message.includes(marker))) {
+          setWarningMessage(message);
+          setStatusMessage('Atenção: ajuste sua jogada para continuar.');
+        } else {
+          setErrorMessage(message);
+        }
       } else if (response.mensagem) {
         setStatusMessage(response.mensagem);
       }
@@ -174,7 +216,9 @@ export function TablePage() {
   }
 
   function handleBetAction(action: BettingAction) {
-    runAction(() => emitWithAck('acao_aposta', { mesaId: routeTableId, acao: action }));
+    runAction(() =>
+      emitWithAck('acao_aposta', { mesaId: routeTableId, acao: action }),
+    );
   }
 
   function handlePlayCard(suit: string, rank: string) {
@@ -187,35 +231,64 @@ export function TablePage() {
     );
   }
 
+  function phaseLabel(phase: TableState['phase']): string {
+    if (phase === 'WAITING_PLAYERS') return 'Aguardando jogadores';
+    if (phase === 'BETTING_PHASE') return 'Fase de apostas';
+    if (phase === 'PLAYING_CARDS') return 'Disputa de cartas';
+    if (phase === 'ROUND_END') return 'Fim da rodada';
+    return 'Jogo encerrado';
+  }
+
   return (
     <main className="table-shell">
-      <header className="panel topbar">
+      <header className="panel table-info-bar">
         <div>
           <p className="eyebrow">RIFA AO VIVO</p>
           <h1>Mesa {routeTableId}</h1>
+        </div>
+        <div className="chip-row">
+          <span className="chip">Pote: {app.game.table?.pot ?? '-'}</span>
+          <span className="chip">
+            Fase: {app.game.table ? phaseLabel(app.game.table.phase) : 'Carregando'}
+          </span>
+          <span className="chip">Manilha: {app.game.table?.manilha ?? '-'}</span>
+          <span className="chip">Naipe da mesa: {app.game.table?.service ?? '-'}</span>
         </div>
         <div className="button-row">
           <Link className="btn btn-ghost" to="/lobby">
             Lobby
           </Link>
-          <button type="button" className="btn btn-ghost" onClick={handleLeaveTable}>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={handleLeaveTable}
+          >
             Sair da mesa
           </button>
         </div>
       </header>
 
-      <section className="status-row">
+      <section className="status-row compact-status">
         <span className={`chip ${app.game.socketConnected ? 'ok' : 'warn'}`}>
           {app.game.socketConnected ? 'socket online' : 'socket offline'}
         </span>
-        {app.game.statusMessage ? <span className="chip">{app.game.statusMessage}</span> : null}
-        {app.game.errorMessage ? <span className="chip error">{app.game.errorMessage}</span> : null}
+        {app.game.statusMessage ? (
+          <span className="chip">{app.game.statusMessage}</span>
+        ) : null}
+        {app.game.warningMessage ? (
+          <span className="chip attn">{app.game.warningMessage}</span>
+        ) : null}
+        {app.game.errorMessage ? (
+          <span className="chip error">{app.game.errorMessage}</span>
+        ) : null}
       </section>
 
       {app.game.table ? (
         <GameBoard
           table={app.game.table}
           meId={mySocketId}
+          warningMessage={app.game.warningMessage}
+          lastBetAction={lastBetAction}
           onStartRound={handleStartRound}
           onBetAction={handleBetAction}
           onPlayCard={handlePlayCard}
@@ -225,7 +298,8 @@ export function TablePage() {
         <section className="panel waiting-panel">
           <h2>Aguardando estado da mesa...</h2>
           <p className="muted">
-            Assim que o servidor enviar o primeiro estado, o tabuleiro aparece aqui.
+            Assim que o servidor enviar o primeiro estado, o tabuleiro aparece
+            aqui.
           </p>
         </section>
       )}
