@@ -373,6 +373,7 @@ export class Table {
       lastTrickWinnerId: this.lastTrickWinnerId,
       manilhaCard: this.manilhaCard,
       bottomCard: this.bottomCard,
+      macacaCount: this.macaca.length,
       dealerIndex: this.dealerIndex,
       currentTurnIndex: this.currentTurnIndex,
 

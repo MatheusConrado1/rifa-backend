@@ -299,6 +299,53 @@ input {
   pointer-events: none;
 }
 
+.deck-stack {
+  position: absolute;
+  left: 27%;
+  top: 54%;
+  transform: translate(-50%, -50%);
+  width: 58px;
+  height: 82px;
+  z-index: 4;
+}
+
+.deck-card {
+  position: absolute;
+  inset: 0;
+}
+
+.deck-card.offset-1 {
+  transform: translate(3px, 3px);
+  opacity: 0.92;
+}
+
+.deck-card.offset-2 {
+  transform: translate(6px, 6px);
+  opacity: 0.82;
+}
+
+.macaca-stack {
+  position: absolute;
+  left: 73%;
+  top: 54%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+  z-index: 4;
+}
+
+.macaca-cards {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 58px;
+}
+
+.macaca-card + .macaca-card {
+  margin-left: -10px;
+}
+
 .seat-ring {
   position: absolute;
   inset: 0;
@@ -385,6 +432,7 @@ input {
   display: grid;
   gap: 0.5rem;
   justify-items: center;
+  z-index: 6;
 }
 
 .trick-center {
@@ -474,6 +522,45 @@ input {
 .trick-center .playing-card,
 .center-side-cards .playing-card {
   width: 58px;
+}
+
+.flying-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.flying-card {
+  position: fixed;
+  left: 0;
+  top: 0;
+  transform: translate(calc(var(--from-x) - 29px), calc(var(--from-y) - 41px));
+  animation: fly-card var(--duration) cubic-bezier(0.2, 0.7, 0.22, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.flying-card.flip-on-arrival {
+  animation:
+    fly-card var(--duration) cubic-bezier(0.2, 0.7, 0.22, 1) forwards,
+    fly-flip var(--duration) ease forwards;
+}
+
+.flying-card .playing-card {
+  width: 58px;
+}
+
+.flying-card .playing-card,
+.flying-card button.playing-card {
+  pointer-events: none;
+}
+
+.flying-card button.playing-card:disabled {
+  opacity: 1;
+}
+
+.flying-card button.playing-card {
+  cursor: default;
 }
 
 .action-dock {
@@ -603,6 +690,28 @@ small {
   }
 }
 
+@keyframes fly-card {
+  0% {
+    transform: translate(calc(var(--from-x) - 29px), calc(var(--from-y) - 41px)) scale(0.94);
+    opacity: 0.94;
+  }
+  100% {
+    transform: translate(calc(var(--to-x) - 29px), calc(var(--to-y) - 41px)) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes fly-flip {
+  0%,
+  65% {
+    filter: saturate(0.95);
+  }
+  100% {
+    transform: perspective(700px) rotateY(180deg);
+    filter: saturate(1.08);
+  }
+}
+
 @media (max-width: 980px) {
   .shell {
     grid-template-columns: 1fr;
@@ -616,6 +725,22 @@ small {
   .felt-table {
     aspect-ratio: 1.35 / 1;
     border-radius: 42px;
+  }
+
+  .deck-stack {
+    width: 50px;
+    height: 70px;
+    left: 25%;
+    top: 56%;
+  }
+
+  .macaca-stack {
+    left: 75%;
+    top: 56%;
+  }
+
+  .macaca-card + .macaca-card {
+    margin-left: -8px;
   }
 
   .table-seat {
@@ -654,5 +779,33 @@ small {
   .trick-center .playing-card,
   .center-side-cards .playing-card {
     width: 50px;
+  }
+
+  .flying-card {
+    transform: translate(calc(var(--from-x) - 25px), calc(var(--from-y) - 35px));
+  }
+
+  .flying-card .playing-card {
+    width: 50px;
+  }
+
+  @keyframes fly-card {
+    0% {
+      transform: translate(calc(var(--from-x) - 25px), calc(var(--from-y) - 35px)) scale(0.94);
+      opacity: 0.94;
+    }
+    100% {
+      transform: translate(calc(var(--to-x) - 25px), calc(var(--to-y) - 35px)) scale(1);
+      opacity: 1;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flying-card,
+  .flying-card.flip-on-arrival,
+  .table-seat.turn,
+  .winner-banner {
+    animation: none !important;
   }
 }

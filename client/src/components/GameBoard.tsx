@@ -1,26 +1,68 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CardView } from './CardView';
-import type { BettingAction, TableState } from '../types';
+import type { BettingAction, Card, TableState } from '../types';
 import type { CSSProperties } from 'react';
 
 type GameBoardProps = {
   table: TableState;
   meId: string | null;
   warningMessage: string;
+  lastBetAction: { playerId: string; action: BettingAction } | null;
   onStartRound: () => void;
   onBetAction: (action: BettingAction) => void;
   onPlayCard: (suit: string, rank: string) => void;
   sendingAction: boolean;
 };
 
+type Point = { x: number; y: number };
+
+type FlyingCard = {
+  id: string;
+  card: Card;
+  hidden?: boolean;
+  from: Point;
+  to: Point;
+  durationMs: number;
+  flipOnArrival?: boolean;
+};
+
+function asViewportPoint(el: HTMLElement | null): Point {
+  if (!el) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  const rect = el.getBoundingClientRect();
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  };
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 export function GameBoard({
   table,
   meId,
   warningMessage,
+  lastBetAction,
   onStartRound,
   onBetAction,
   onPlayCard,
   sendingAction,
 }: GameBoardProps) {
+  const [flyingCards, setFlyingCards] = useState<FlyingCard[]>([]);
+  const [isDealing, setIsDealing] = useState(false);
+  const deckRef = useRef<HTMLDivElement | null>(null);
+  const macacaRef = useRef<HTMLDivElement | null>(null);
+  const manilhaRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const trickCenterRef = useRef<HTMLDivElement | null>(null);
+  const myHandRef = useRef<HTMLDivElement | null>(null);
+  const seatRefs = useRef<Map<string, HTMLLIElement | null>>(new Map());
+  const prevTableRef = useRef<TableState | null>(null);
+  const animationTimeoutsRef = useRef<number[]>([]);
+
   const me = table.players.find((player) => player.id === meId) ?? null;
   const currentPlayer = table.players[table.currentTurnIndex] ?? null;
   const pendingWinner = table.players.find(
@@ -35,9 +77,12 @@ export function GameBoard({
     (table.phase === 'WAITING_PLAYERS' || table.phase === 'ROUND_END') &&
     table.players.length >= 2;
 
-  const canBet = table.phase === 'BETTING_PHASE' && isMyTurn;
+  const canBet = table.phase === 'BETTING_PHASE' && isMyTurn && !isDealing;
   const canPlayCard =
-    table.phase === 'PLAYING_CARDS' && isMyTurn && !table.isResolvingTrick;
+    table.phase === 'PLAYING_CARDS' &&
+    isMyTurn &&
+    !table.isResolvingTrick &&
+    !isDealing;
 
   const totalPlayers = Math.max(table.players.length, 1);
   const seatStep = (Math.PI * 2) / totalPlayers;
@@ -53,6 +98,196 @@ export function GameBoard({
         ? `Ultima vaza: ${lastWinner.name}`
         : '';
 
+  const reducedMotion = useMemo(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    [],
+  );
+
+  function scheduleCleanup(id: string, durationMs: number) {
+    const timeoutId = window.setTimeout(() => {
+      setFlyingCards((current) => current.filter((card) => card.id !== id));
+    }, durationMs + 60);
+    animationTimeoutsRef.current.push(timeoutId);
+  }
+
+  function enqueueFlyingCard(card: FlyingCard) {
+    setFlyingCards((current) => [...current, card]);
+    scheduleCleanup(card.id, card.durationMs);
+  }
+
+  function clearAnimationTimeouts() {
+    for (const timeoutId of animationTimeoutsRef.current) {
+      window.clearTimeout(timeoutId);
+    }
+    animationTimeoutsRef.current = [];
+  }
+
+  useEffect(() => {
+    return () => {
+      clearAnimationTimeouts();
+    };
+  }, []);
+
+  useEffect(() => {
+    const prev = prevTableRef.current;
+    if (!prev) {
+      prevTableRef.current = table;
+      return;
+    }
+
+    if (!reducedMotion) {
+      const justEnteredBettingPhase =
+        prev.phase !== 'BETTING_PHASE' && table.phase === 'BETTING_PHASE';
+
+      if (justEnteredBettingPhase && table.players.length >= 2) {
+        let cancelled = false;
+
+        const runDealSequence = async () => {
+          setIsDealing(true);
+
+          const dealerIndex = table.dealerIndex;
+          const deckPoint = asViewportPoint(deckRef.current);
+          const macacaPoint = asViewportPoint(macacaRef.current);
+          const delayBetweenCards = 160;
+          const flightDuration = 430;
+          const revealDuration = 480;
+          const rounds = 3;
+
+          const orderFromAfterDealer = Array.from(
+            { length: table.players.length },
+            (_, idx) => (dealerIndex + 1 + idx) % table.players.length,
+          );
+
+          for (let round = 0; round < rounds; round += 1) {
+            for (const playerIndex of orderFromAfterDealer) {
+              if (cancelled) return;
+
+              const targetPlayer = table.players[playerIndex];
+              const seatPoint = asViewportPoint(
+                seatRefs.current.get(targetPlayer.id) ?? null,
+              );
+
+              if (playerIndex === dealerIndex) {
+                const macacaDealId = `deal-macaca-${round}-${Date.now()}`;
+                enqueueFlyingCard({
+                  id: macacaDealId,
+                  card: { rank: 'A', suit: 'spades' },
+                  hidden: true,
+                  from: deckPoint,
+                  to: macacaPoint,
+                  durationMs: flightDuration,
+                });
+                await wait(delayBetweenCards);
+              }
+
+              const dealId = `deal-${targetPlayer.id}-${round}-${Date.now()}`;
+              enqueueFlyingCard({
+                id: dealId,
+                card: { rank: 'K', suit: 'clubs' },
+                hidden: true,
+                from: deckPoint,
+                to: seatPoint,
+                durationMs: flightDuration,
+              });
+
+              await wait(delayBetweenCards);
+            }
+          }
+
+          if (cancelled) return;
+
+          const manilhaPoint = asViewportPoint(manilhaRef.current);
+          const bottomPoint = asViewportPoint(bottomRef.current);
+
+          enqueueFlyingCard({
+            id: `reveal-manilha-${Date.now()}`,
+            card: table.manilhaCard ?? { rank: 'Q', suit: 'hearts' },
+            hidden: true,
+            from: deckPoint,
+            to: manilhaPoint,
+            durationMs: revealDuration,
+            flipOnArrival: true,
+          });
+
+          await wait(delayBetweenCards);
+
+          enqueueFlyingCard({
+            id: `reveal-bottom-${Date.now()}`,
+            card: table.bottomCard ?? { rank: '9', suit: 'clubs' },
+            hidden: true,
+            from: deckPoint,
+            to: bottomPoint,
+            durationMs: revealDuration,
+            flipOnArrival: true,
+          });
+
+          await wait(500);
+          setIsDealing(false);
+        };
+
+        void runDealSequence();
+
+        prevTableRef.current = table;
+
+        return () => {
+          cancelled = true;
+          setIsDealing(false);
+        };
+      }
+
+      if (
+        table.currentTrickCards.length > prev.currentTrickCards.length &&
+        table.currentTrickCards.length > 0
+      ) {
+        const newCard = table.currentTrickCards[table.currentTrickCards.length - 1];
+        const sourcePlayer = table.players.find((p) => p.id === newCard.playerId);
+
+        const fromPoint =
+          newCard.playerId === meId
+            ? asViewportPoint(myHandRef.current)
+            : asViewportPoint(seatRefs.current.get(newCard.playerId) ?? null);
+        const toPoint = asViewportPoint(trickCenterRef.current);
+
+        enqueueFlyingCard({
+          id: `play-${newCard.playerId}-${newCard.card.suit}-${newCard.card.rank}-${Date.now()}`,
+          card: newCard.card,
+          from: fromPoint,
+          to: toPoint,
+          durationMs: 250,
+          hidden: sourcePlayer ? false : true,
+        });
+      }
+
+      if (
+        lastBetAction?.action === 'MACACA' &&
+        table.phase === 'BETTING_PHASE' &&
+        prev.macacaCount > table.macacaCount &&
+        lastBetAction.playerId
+      ) {
+        const fromPoint = asViewportPoint(macacaRef.current);
+        const toPoint =
+          lastBetAction.playerId === meId
+            ? asViewportPoint(myHandRef.current)
+            : asViewportPoint(seatRefs.current.get(lastBetAction.playerId) ?? null);
+
+        for (let idx = 0; idx < 3; idx += 1) {
+          enqueueFlyingCard({
+            id: `macaca-take-${idx}-${Date.now()}`,
+            card: { rank: 'A', suit: 'spades' },
+            hidden: true,
+            from: fromPoint,
+            to: toPoint,
+            durationMs: 240,
+          });
+        }
+      }
+    }
+
+    prevTableRef.current = table;
+  }, [lastBetAction, meId, reducedMotion, table]);
+
   return (
     <div className="table-layout">
       <section className="poker-table-panel">
@@ -60,6 +295,22 @@ export function GameBoard({
 
         <div className="table-stage">
           <div className="felt-table">
+            <div className="deck-stack" ref={deckRef} aria-hidden="true">
+              <div className="playing-card card-back deck-card" />
+              <div className="playing-card card-back deck-card offset-1" />
+              <div className="playing-card card-back deck-card offset-2" />
+            </div>
+
+            <div className="macaca-stack" ref={macacaRef}>
+              <small>Macaca</small>
+              <div className="macaca-cards" aria-label="Macaca na mesa">
+                {Array.from({ length: Math.max(table.macacaCount, 0) }, (_, idx) => (
+                  <div key={`macaca-${idx}`} className="playing-card card-back seat-card-back macaca-card" />
+                ))}
+                {table.macacaCount === 0 ? <span className="muted">vazia</span> : null}
+              </div>
+            </div>
+
             <div className="table-center-hud">
               {centralMessage ? (
                 <p className={`winner-banner ${table.isResolvingTrick ? '' : 'subtle'}`}>
@@ -67,7 +318,7 @@ export function GameBoard({
                 </p>
               ) : null}
 
-              <div className="trick-center">
+              <div className="trick-center" ref={trickCenterRef}>
                 {table.currentTrickCards.length === 0 ? (
                   <p className="muted">Aguardando cartas na vaza...</p>
                 ) : (
@@ -96,11 +347,11 @@ export function GameBoard({
               </div>
 
               <div className="center-side-cards">
-                <div>
+                <div ref={manilhaRef}>
                   <small>Manilha</small>
                   {table.manilhaCard ? <CardView card={table.manilhaCard} /> : <p>-</p>}
                 </div>
-                <div>
+                <div ref={bottomRef}>
                   <small>Fundo</small>
                   {table.bottomCard ? <CardView card={table.bottomCard} /> : <p>-</p>}
                 </div>
@@ -113,10 +364,11 @@ export function GameBoard({
                 const isDealer = table.dealerIndex === index;
                 const isMePlayer = meId === player.id;
                 const isPendingWinner = table.pendingTrickWinnerId === player.id;
-                const isLastWinner = !table.pendingTrickWinnerId && table.lastTrickWinnerId === player.id;
+                const isLastWinner =
+                  !table.pendingTrickWinnerId && table.lastTrickWinnerId === player.id;
 
                 const relativeIndex = (index - focusIndex + totalPlayers) % totalPlayers;
-                const angle = (Math.PI / 2) + relativeIndex * seatStep;
+                const angle = Math.PI / 2 + relativeIndex * seatStep;
                 const x = Math.cos(angle) * seatRadiusX;
                 const y = Math.sin(angle) * seatRadiusY;
                 const adjustedY = y < 0 ? y * 1.03 : y * 0.95;
@@ -137,7 +389,14 @@ export function GameBoard({
                 };
 
                 return (
-                  <li key={player.id} className={playerClasses} style={seatStyle}>
+                  <li
+                    key={player.id}
+                    className={playerClasses}
+                    style={seatStyle}
+                    ref={(el) => {
+                      seatRefs.current.set(player.id, el);
+                    }}
+                  >
                     {isDealer ? <span className="dealer-chip">D</span> : null}
 
                     <strong>{player.name}</strong>
@@ -164,7 +423,7 @@ export function GameBoard({
               })}
             </ul>
 
-            <div className="my-hand-near-seat">
+            <div className="my-hand-near-seat" ref={myHandRef}>
               {!me ? (
                 <p className="muted">Aguardando estado do jogador...</p>
               ) : me.hand.length === 0 ? (
@@ -182,6 +441,32 @@ export function GameBoard({
                 </div>
               )}
             </div>
+
+            <div className="flying-layer" aria-hidden="true">
+              {flyingCards.map((fly) => {
+                const style: CSSProperties = {
+                  '--from-x': `${fly.from.x}px`,
+                  '--from-y': `${fly.from.y}px`,
+                  '--to-x': `${fly.to.x}px`,
+                  '--to-y': `${fly.to.y}px`,
+                  '--duration': `${fly.durationMs}ms`,
+                } as CSSProperties;
+
+                return (
+                  <div
+                    key={fly.id}
+                    className={`flying-card ${fly.flipOnArrival ? 'flip-on-arrival' : ''}`}
+                    style={style}
+                  >
+                    {fly.hidden ? (
+                      <div className="playing-card card-back" />
+                    ) : (
+                      <CardView card={fly.card} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </section>
@@ -191,7 +476,7 @@ export function GameBoard({
           type="button"
           className="btn btn-primary"
           onClick={onStartRound}
-          disabled={!canStartRound || sendingAction}
+          disabled={!canStartRound || sendingAction || isDealing}
         >
           Iniciar rodada
         </button>

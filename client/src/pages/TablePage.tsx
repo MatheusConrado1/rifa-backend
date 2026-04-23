@@ -48,6 +48,10 @@ export function TablePage() {
   const app = useAppState();
   const [mySocketId, setMySocketId] = useState<string | null>(null);
   const [sendingAction, setSendingAction] = useState(false);
+  const [lastBetAction, setLastBetAction] = useState<{
+    playerId: string;
+    action: BettingAction;
+  } | null>(null);
 
   const routeTableId = useMemo(
     () => (params.mesaId ?? '').trim(),
@@ -124,11 +128,23 @@ export function TablePage() {
       );
     };
 
+    const onBetActionProcessed = (payload: {
+      playerId?: string;
+      acao?: BettingAction;
+    }) => {
+      if (!payload?.playerId || !payload?.acao) {
+        return;
+      }
+
+      setLastBetAction({ playerId: payload.playerId, action: payload.acao });
+    };
+
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('estado_atualizado', onStateUpdated);
     socket.on('rodada_iniciada', onRoundStarted);
     socket.on('jogador_entrou', onPlayerJoined);
+    socket.on('acao_aposta_processada', onBetActionProcessed);
     socket.on('error', onError);
 
     if (socket.connected) {
@@ -141,6 +157,7 @@ export function TablePage() {
       socket.off('estado_atualizado', onStateUpdated);
       socket.off('rodada_iniciada', onRoundStarted);
       socket.off('jogador_entrou', onPlayerJoined);
+      socket.off('acao_aposta_processada', onBetActionProcessed);
       socket.off('error', onError);
     };
   }, [app.auth.token, playerName, routeTableId]);
@@ -271,6 +288,7 @@ export function TablePage() {
           table={app.game.table}
           meId={mySocketId}
           warningMessage={app.game.warningMessage}
+          lastBetAction={lastBetAction}
           onStartRound={handleStartRound}
           onBetAction={handleBetAction}
           onPlayCard={handlePlayCard}
