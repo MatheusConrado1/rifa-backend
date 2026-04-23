@@ -214,12 +214,28 @@ export function TablePage() {
     );
   }
 
+  function phaseLabel(phase: TableState['phase']): string {
+    if (phase === 'WAITING_PLAYERS') return 'Aguardando jogadores';
+    if (phase === 'BETTING_PHASE') return 'Fase de apostas';
+    if (phase === 'PLAYING_CARDS') return 'Disputa de cartas';
+    if (phase === 'ROUND_END') return 'Fim da rodada';
+    return 'Jogo encerrado';
+  }
+
   return (
     <main className="table-shell">
-      <header className="panel topbar">
+      <header className="panel table-info-bar">
         <div>
           <p className="eyebrow">RIFA AO VIVO</p>
           <h1>Mesa {routeTableId}</h1>
+        </div>
+        <div className="chip-row">
+          <span className="chip">Pote: {app.game.table?.pot ?? '-'}</span>
+          <span className="chip">
+            Fase: {app.game.table ? phaseLabel(app.game.table.phase) : 'Carregando'}
+          </span>
+          <span className="chip">Manilha: {app.game.table?.manilha ?? '-'}</span>
+          <span className="chip">Naipe da mesa: {app.game.table?.service ?? '-'}</span>
         </div>
         <div className="button-row">
           <Link className="btn btn-ghost" to="/lobby">
@@ -235,7 +251,7 @@ export function TablePage() {
         </div>
       </header>
 
-      <section className="status-row">
+      <section className="status-row compact-status">
         <span className={`chip ${app.game.socketConnected ? 'ok' : 'warn'}`}>
           {app.game.socketConnected ? 'socket online' : 'socket offline'}
         </span>

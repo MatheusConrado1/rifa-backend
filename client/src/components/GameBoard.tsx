@@ -1,5 +1,5 @@
 import { CardView } from './CardView';
-import type { BettingAction, GamePhase, TableState } from '../types';
+import type { BettingAction, TableState } from '../types';
 import type { CSSProperties } from 'react';
 
 type GameBoardProps = {
@@ -11,14 +11,6 @@ type GameBoardProps = {
   onPlayCard: (suit: string, rank: string) => void;
   sendingAction: boolean;
 };
-
-function phaseLabel(phase: GamePhase): string {
-  if (phase === 'WAITING_PLAYERS') return 'Aguardando jogadores';
-  if (phase === 'BETTING_PHASE') return 'Fase de apostas';
-  if (phase === 'PLAYING_CARDS') return 'Disputa de cartas';
-  if (phase === 'ROUND_END') return 'Fim da rodada';
-  return 'Jogo encerrado';
-}
 
 export function GameBoard({
   table,
@@ -49,32 +41,21 @@ export function GameBoard({
 
   const totalPlayers = Math.max(table.players.length, 1);
   const seatStep = (Math.PI * 2) / totalPlayers;
-  const seatRadiusX = totalPlayers <= 3 ? 250 : 292;
-  const seatRadiusY = totalPlayers <= 3 ? 165 : 190;
+  const seatRadiusX = totalPlayers <= 3 ? 330 : 378;
+  const seatRadiusY = totalPlayers <= 3 ? 238 : 262;
   const meIndex = table.players.findIndex((player) => player.id === meId);
   const focusIndex = meIndex >= 0 ? meIndex : 0;
 
-  const centralMessage = table.isResolvingTrick && pendingWinner
-    ? `${pendingWinner.name} venceu esta vaza`
-    : !table.isResolvingTrick && lastWinner
-      ? `Ultima vaza: ${lastWinner.name}`
-      : '';
+  const centralMessage =
+    table.isResolvingTrick && pendingWinner
+      ? `${pendingWinner.name} venceu esta vaza`
+      : !table.isResolvingTrick && lastWinner
+        ? `Ultima vaza: ${lastWinner.name}`
+        : '';
 
   return (
     <div className="table-layout">
-      <section className="panel table-head">
-        <div>
-          <p className="eyebrow">MESA {table.id}</p>
-          <h2>{phaseLabel(table.phase)}</h2>
-        </div>
-        <div className="chip-row">
-          <span className="chip">Pote: {table.pot}</span>
-          <span className="chip">Manilha: {table.manilha ?? '-'}</span>
-          <span className="chip">Naipe da mesa: {table.service ?? '-'}</span>
-        </div>
-      </section>
-
-      <section className="panel poker-table-panel">
+      <section className="poker-table-panel">
         {warningMessage ? <p className="table-warning-banner">{warningMessage}</p> : null}
 
         <div className="table-stage">
@@ -138,6 +119,8 @@ export function GameBoard({
                 const angle = (Math.PI / 2) + relativeIndex * seatStep;
                 const x = Math.cos(angle) * seatRadiusX;
                 const y = Math.sin(angle) * seatRadiusY;
+                const adjustedY = y < 0 ? y * 1.03 : y * 0.95;
+                const finalY = isMePlayer ? adjustedY - 14 : adjustedY;
 
                 const playerClasses = [
                   'table-seat',
@@ -150,7 +133,7 @@ export function GameBoard({
                   .join(' ');
 
                 const seatStyle: CSSProperties = {
-                  transform: `translate(${x}px, ${y}px)`,
+                  transform: `translate(-50%, -50%) translate(${x}px, ${finalY}px)`,
                 };
 
                 return (
@@ -162,6 +145,14 @@ export function GameBoard({
                       moedas {player.coins} | cartas {player.cardCount} | vazas {player.tricksWon}
                     </p>
 
+                    {!isMePlayer ? (
+                      <div className="seat-card-backs" aria-hidden="true">
+                        <div className="playing-card card-back seat-card-back" />
+                        <div className="playing-card card-back seat-card-back" />
+                        <div className="playing-card card-back seat-card-back" />
+                      </div>
+                    ) : null}
+
                     <div className="tag-row">
                       {isMePlayer ? <span className="tag">voce</span> : null}
                       {isTurn ? <span className="tag tag-turn">vez</span> : null}
@@ -172,73 +163,63 @@ export function GameBoard({
                 );
               })}
             </ul>
+
+            <div className="my-hand-near-seat">
+              {!me ? (
+                <p className="muted">Aguardando estado do jogador...</p>
+              ) : me.hand.length === 0 ? (
+                <p className="muted">Sem cartas na mao no momento.</p>
+              ) : (
+                <div className="hand-row">
+                  {me.hand.map((card) => (
+                    <CardView
+                      key={`${card.suit}-${card.rank}`}
+                      card={card}
+                      disabled={!canPlayCard || sendingAction}
+                      onClick={() => onPlayCard(card.suit, card.rank)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="table-bottom-grid">
-        <article className="panel actions-panel">
-          <h3>Acoes</h3>
+      <section className="action-dock" aria-label="Acoes da rodada">
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={onStartRound}
+          disabled={!canStartRound || sendingAction}
+        >
+          Iniciar rodada
+        </button>
 
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={onStartRound}
-            disabled={!canStartRound || sendingAction}
-          >
-            Iniciar rodada
-          </button>
-
-          <div className="action-group">
-            <p className="muted">Decisao da fase de aposta</p>
-            <div className="button-row">
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => onBetAction('PLAY')}
-                disabled={!canBet || sendingAction}
-              >
-                Jogar
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => onBetAction('FOLD')}
-                disabled={!canBet || sendingAction}
-              >
-                Desistir
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => onBetAction('MACACA')}
-                disabled={!canBet || sendingAction}
-              >
-                Macaca
-              </button>
-            </div>
-          </div>
-        </article>
-
-        <article className="panel my-hand-panel">
-          <h3>Minha mao</h3>
-          {!me ? (
-            <p className="muted">Aguardando estado do jogador...</p>
-          ) : me.hand.length === 0 ? (
-            <p className="muted">Sem cartas na mao no momento.</p>
-          ) : (
-            <div className="hand-row">
-              {me.hand.map((card) => (
-                <CardView
-                  key={`${card.suit}-${card.rank}`}
-                  card={card}
-                  disabled={!canPlayCard || sendingAction}
-                  onClick={() => onPlayCard(card.suit, card.rank)}
-                />
-              ))}
-            </div>
-          )}
-        </article>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => onBetAction('PLAY')}
+          disabled={!canBet || sendingAction}
+        >
+          Jogar
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => onBetAction('FOLD')}
+          disabled={!canBet || sendingAction}
+        >
+          Desistir
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => onBetAction('MACACA')}
+          disabled={!canBet || sendingAction}
+        >
+          Macaca
+        </button>
       </section>
     </div>
   );
