@@ -31,6 +31,9 @@ export class Table {
   public pot: number = 0;
   public contestedPot: number = 0;
   public readonly ROUND_BASELINE = 3;
+  public roundStake: number = 3;
+  public potOwnerId: string | null = null;
+  public initialPlayerCount: number = 0;
   public macaca: Card[] = [];
   public manilha: Suit | null = null;
   public manilhaCard: Card | null = null;
@@ -49,35 +52,205 @@ export class Table {
 
   constructor(public readonly id: string) {}
 
+  private canParticipateRound(player: Player): boolean {
+    return player.seatStatus === 'ACTIVE';
+  }
+
+  private markPlayerDead(player: Player): void {
+    player.seatStatus = 'DEAD';
+    player.isPlayingRound = false;
+    player.hasActed = true;
+    player.hand = [];
+  }
+
+  private findNextIndex(
+    startIndex: number,
+    predicate: (player: Player) => boolean,
+  ): number {
+    if (this.players.length === 0) {
+      return -1;
+    }
+
+    let nextIndex = (startIndex + 1) % this.players.length;
+    const initial = nextIndex;
+
+    do {
+      if (predicate(this.players[nextIndex])) {
+        return nextIndex;
+      }
+      nextIndex = (nextIndex + 1) % this.players.length;
+    } while (nextIndex !== initial);
+
+    return -1;
+  }
+
+  private aliveCount(): number {
+    return this.players.filter((p) => p.seatStatus !== 'DEAD').length;
+  }
+
+  private finalizeBettingIfNeeded(): void {
+    const allPlayersActed = this.players.every((p) => p.hasActed);
+    if (!allPlayersActed) {
+      return;
+    }
+
+    const activePlayers = this.players.filter((p) => p.isPlayingRound);
+
+    if (activePlayers.length === 0) {
+      const dealer = this.players[this.dealerIndex];
+      dealer.coins += this.pot;
+      this.pot = 0;
+      this.prepareNextRound();
+      return;
+    }
+
+    if (activePlayers.length === 1) {
+      const winner = activePlayers[0];
+      winner.coins += this.pot;
+      this.pot = 0;
+      this.prepareNextRound();
+      return;
+    }
+
+    this.phase = GamePhase.PLAYING_CARDS;
+    this.contestedPot = this.pot;
+    this.setNextActivePlayerTurn(this.dealerIndex);
+  }
+
+  private activeSeatCount(): number {
+    return this.players.filter((p) => this.canParticipateRound(p)).length;
+  }
+
+  private removePlayerFromCurrentRound(player: Player): void {
+    player.isPlayingRound = false;
+    player.hasActed = true;
+    player.hand = [];
+
+    if (this.phase === GamePhase.BETTING_PHASE) {
+      const pendingPlayer = this.players[this.currentTurnIndex];
+      if (pendingPlayer?.id === player.id) {
+        const nextDecisionIndex = this.findNextIndex(
+          this.currentTurnIndex,
+          (candidate) => !candidate.hasActed,
+        );
+        if (nextDecisionIndex !== -1) {
+          this.currentTurnIndex = nextDecisionIndex;
+        }
+      }
+
+      this.finalizeBettingIfNeeded();
+      return;
+    }
+
+    if (this.phase === GamePhase.PLAYING_CARDS) {
+      const pendingPlayer = this.players[this.currentTurnIndex];
+      if (pendingPlayer?.id === player.id) {
+        this.setNextActivePlayerTurn(this.currentTurnIndex);
+      }
+
+      const activePlayers = this.players.filter((candidate) => candidate.isPlayingRound);
+      if (activePlayers.length <= 1) {
+        if (activePlayers.length === 1) {
+          activePlayers[0].coins += this.pot;
+        } else {
+          const dealer = this.players[this.dealerIndex];
+          if (dealer) {
+            dealer.coins += this.pot;
+          }
+        }
+        this.pot = 0;
+        this.prepareNextRound();
+      }
+    }
+  }
+
   addPlayer(player: Player): void {
+    const existing = this.players.find((p) => p.id === player.id);
+    if (existing) {
+      existing.socketId = player.socketId;
+      existing.name = player.name;
+      if (existing.seatStatus === 'SPECTATOR') {
+        existing.pendingReturn = false;
+        existing.hasActed = this.phase === GamePhase.BETTING_PHASE;
+      } else if (existing.seatStatus !== 'DEAD') {
+        if (this.phase === GamePhase.BETTING_PHASE || this.phase === GamePhase.PLAYING_CARDS) {
+          existing.seatStatus = 'AWAY';
+          existing.pendingReturn = true;
+          existing.hasActed = true;
+        } else {
+          existing.seatStatus = 'ACTIVE';
+          existing.pendingReturn = false;
+          existing.hasActed = false;
+        }
+      }
+      existing.isPlayingRound = false;
+      return;
+    }
+
     if (this.phase !== GamePhase.WAITING_PLAYERS) {
       throw new Error('O jogo já começou, não é possível entrar agora.');
     }
+
     this.players.push(player);
+    this.initialPlayerCount = Math.max(this.initialPlayerCount, this.players.length);
   }
 
   startRound(): void {
-    if (this.players.length < 2) {
+    for (const player of this.players) {
+      if (player.seatStatus === 'AWAY' && player.pendingReturn) {
+        player.seatStatus = 'ACTIVE';
+        player.pendingReturn = false;
+      }
+    }
+
+    if (this.activeSeatCount() < 2) {
       throw new Error('Jogadores insuficientes para iniciar.');
     }
 
     this.deck = new Deck();
 
-    const dealer = this.players[this.dealerIndex];
-    const dealerPayment = dealer.payCoins(this.ROUND_BASELINE);
-    this.pot += dealerPayment;
-
-    for (const player of this.players) {
-      if (player.pendingPenalty > 0) {
-        this.pot += player.payCoins(player.pendingPenalty);
-        player.pendingPenalty = 0;
+    const dealerCandidate = this.players[this.dealerIndex];
+    if (!this.canParticipateRound(dealerCandidate)) {
+      const nextDealer = this.findNextIndex(
+        this.dealerIndex,
+        (player) => this.canParticipateRound(player),
+      );
+      if (nextDealer === -1) {
+        throw new Error('Nenhum jogador ativo disponível para distribuir.');
       }
+      this.dealerIndex = nextDealer;
     }
 
     for (const player of this.players) {
-      player.hand = [this.deck.draw(), this.deck.draw(), this.deck.draw()];
+      player.lastDecision = null;
+
+      const dealerCharge = player.id === this.players[this.dealerIndex].id ? this.roundStake : 0;
+      const penaltyCharge = player.pendingPenalty;
+      const requiredPayment = dealerCharge + penaltyCharge;
+      const coinsBeforeCharge = player.coins;
+
+      if (requiredPayment > 0) {
+        const paidAmount = player.payCoins(requiredPayment);
+        this.pot += paidAmount;
+
+        if (coinsBeforeCharge === 0) {
+          this.markPlayerDead(player);
+        }
+      }
+
+      player.pendingPenalty = 0;
+    }
+
+    for (const player of this.players) {
+      if (this.canParticipateRound(player)) {
+        player.hand = [this.deck.draw(), this.deck.draw(), this.deck.draw()];
+        player.hasActed = false;
+      } else {
+        player.hand = [];
+        player.hasActed = true;
+      }
+
       player.isPlayingRound = false;
-      player.hasActed = false;
       player.tricksWon = 0;
     }
 
@@ -86,7 +259,11 @@ export class Table {
     this.manilha = this.manilhaCard.suit;
     this.bottomCard = this.deck.bottomCard;
 
-    this.currentTurnIndex = (this.dealerIndex + 1) % this.players.length;
+    const firstDecisionIndex = this.findNextIndex(
+      this.dealerIndex,
+      (player) => !player.hasActed,
+    );
+    this.currentTurnIndex = firstDecisionIndex === -1 ? this.dealerIndex : firstDecisionIndex;
     this.isResolvingTrick = false;
     this.pendingTrickWinnerId = null;
     this.pendingTrickWinningCard = null;
@@ -110,21 +287,16 @@ export class Table {
 
     if (action === 'FOLD') {
       currentPlayer.isPlayingRound = false;
+      currentPlayer.lastDecision = 'FOLD';
     } else if (action === 'PLAY') {
-      if (!currentPlayer.hasPaid) {
-        const payment = currentPlayer.payCoins(this.ROUND_BASELINE);
-        this.pot += payment;
-      }
       currentPlayer.isPlayingRound = true;
+      currentPlayer.lastDecision = 'PLAY';
     } else if (action === 'MACACA') {
       if (this.macaca.length === 0) {
         throw new Error('Alguém já pegou a Macaca nesta rodada!');
       }
-      if (!currentPlayer.hasPaid) {
-        const payment = currentPlayer.payCoins(this.ROUND_BASELINE);
-        this.pot += payment;
-      }
       currentPlayer.isPlayingRound = true;
+      currentPlayer.lastDecision = 'MACACA';
 
       currentPlayer.hand = [...this.macaca];
       this.macaca = [];
@@ -132,38 +304,27 @@ export class Table {
 
     currentPlayer.hasActed = true;
 
-    const allPlayersActed = this.players.every((p) => p.hasActed);
-
-    if (allPlayersActed) {
-      const activePlayers = this.players.filter((p) => p.isPlayingRound);
-
-      if (activePlayers.length === 0) {
-        const dealer = this.players[this.dealerIndex];
-        dealer.coins += this.pot;
-        this.pot = 0;
-        this.prepareNextRound();
-      } else if (activePlayers.length === 1) {
-        const winner = activePlayers[0];
-        winner.coins += this.pot;
-        this.pot = 0;
-        this.prepareNextRound();
-      } else {
-        this.phase = GamePhase.PLAYING_CARDS;
-        this.contestedPot = this.pot;
-        this.setNextActivePlayerTurn(this.dealerIndex);
-      }
+    if (this.players.every((p) => p.hasActed)) {
+      this.finalizeBettingIfNeeded();
     } else {
-      this.currentTurnIndex = (this.currentTurnIndex + 1) % this.players.length;
+      const nextDecisionIndex = this.findNextIndex(
+        this.currentTurnIndex,
+        (player) => !player.hasActed,
+      );
+      if (nextDecisionIndex !== -1) {
+        this.currentTurnIndex = nextDecisionIndex;
+      }
     }
   }
 
   private setNextActivePlayerTurn(startIndex: number): void {
-    let nextIndex = (startIndex + 1) % this.players.length;
-
-    while (!this.players[nextIndex].isPlayingRound) {
-      nextIndex = (nextIndex + 1) % this.players.length;
+    const nextIndex = this.findNextIndex(
+      startIndex,
+      (player) => player.isPlayingRound,
+    );
+    if (nextIndex !== -1) {
+      this.currentTurnIndex = nextIndex;
     }
-    this.currentTurnIndex = nextIndex;
   }
 
   private getCardPower(card: Card): number {
@@ -316,7 +477,6 @@ export class Table {
         player.coins += payout;
         totalPayout += payout;
       }
-      player.hasPaid = false;
     }
 
     this.pot -= totalPayout;
@@ -325,28 +485,31 @@ export class Table {
   }
 
   private prepareNextRound(): void {
-    let nextDealerIndex = (this.dealerIndex + 1) % this.players.length;
+    const nextDealerIndex = this.findNextIndex(
+      this.dealerIndex,
+      (player) => this.canParticipateRound(player),
+    );
 
-    const survivingCount = this.players.filter((p) => p.coins > 0).length;
-    if (survivingCount > 1) {
-      while (this.players[nextDealerIndex].coins <= 0) {
-        nextDealerIndex = (nextDealerIndex + 1) % this.players.length;
+    if (this.initialPlayerCount <= 2) {
+      if (this.aliveCount() <= 1) {
+        this.phase = GamePhase.GAME_OVER;
+        return;
       }
-    }
-
-    const nextDealerId = this.players[nextDealerIndex].id;
-
-    this.players = this.players.filter((p) => p.coins > 0);
-
-    if (this.players.length === 1) {
-      this.phase = GamePhase.GAME_OVER;
-      return;
-    } else if (this.players.length === 0) {
+    } else if (this.aliveCount() <= 2) {
       this.phase = GamePhase.GAME_OVER;
       return;
     }
 
-    this.dealerIndex = this.players.findIndex((p) => p.id === nextDealerId);
+    for (const player of this.players) {
+      player.hand = [];
+      player.isPlayingRound = false;
+      player.hasActed = false;
+      player.lastDecision = null;
+    }
+
+    if (nextDealerIndex !== -1) {
+      this.dealerIndex = nextDealerIndex;
+    }
 
     this.currentTrickCards = [];
     this.tricksPlayed = 0;
@@ -369,6 +532,8 @@ export class Table {
       id: this.id,
       phase: this.phase,
       pot: this.pot,
+      roundStake: this.roundStake,
+      potOwnerId: this.potOwnerId,
       manilha: this.manilha,
       service: this.service,
       currentTrickCards: this.currentTrickCards,
@@ -388,6 +553,9 @@ export class Table {
           id: p.id,
           name: p.name,
           coins: p.coins,
+          seatStatus: p.seatStatus,
+          pendingReturn: p.pendingReturn,
+          lastDecision: p.lastDecision,
           isPlayingRound: p.isPlayingRound,
           hasActed: p.hasActed,
           pendingPenalty: p.pendingPenalty,
@@ -397,5 +565,92 @@ export class Table {
         };
       }),
     };
+  }
+
+  setRoundStake(playerId: string, requestedStake: number): void {
+    const allowedStakes = [3, 6, 9, 12];
+
+    if (this.phase !== GamePhase.WAITING_PLAYERS && this.phase !== GamePhase.ROUND_END) {
+      throw new Error('A boca só pode ser ajustada entre rodadas.');
+    }
+
+    if (!allowedStakes.includes(requestedStake)) {
+      throw new Error('Valor de boca inválido. Use 3, 6, 9 ou 12.');
+    }
+
+    const player = this.players.find((p) => p.id === playerId);
+    if (!player) {
+      throw new Error('Jogador não encontrado na mesa.');
+    }
+
+    if (requestedStake > this.roundStake) {
+      if (player.coins < requestedStake) {
+        throw new Error(`Você precisa ter pelo menos ${requestedStake} moedas para aumentar a boca.`);
+      }
+      this.roundStake = requestedStake;
+      this.potOwnerId = playerId;
+      return;
+    }
+
+    if (requestedStake < this.roundStake) {
+      if (!this.potOwnerId || this.potOwnerId !== playerId) {
+        throw new Error('Somente o dono da boca pode diminuir o valor.');
+      }
+      this.roundStake = requestedStake;
+    }
+  }
+
+  setPlayerAway(playerId: string): void {
+    const player = this.players.find((p) => p.id === playerId);
+    if (!player) {
+      return;
+    }
+
+    if (player.seatStatus === 'DEAD') {
+      player.seatStatus = 'DEAD';
+      return;
+    }
+
+    player.seatStatus = 'AWAY';
+    player.pendingReturn = true;
+    this.removePlayerFromCurrentRound(player);
+  }
+
+  setPlayerSpectator(playerId: string): void {
+    const player = this.players.find((p) => p.id === playerId);
+    if (!player) {
+      return;
+    }
+
+    if (player.seatStatus === 'DEAD') {
+      throw new Error('Jogador morto já está fora da disputa.');
+    }
+
+    player.seatStatus = 'SPECTATOR';
+    player.pendingReturn = false;
+    player.lastDecision = null;
+    this.removePlayerFromCurrentRound(player);
+  }
+
+  setPlayerReturnNextRound(playerId: string): void {
+    const player = this.players.find((p) => p.id === playerId);
+    if (!player) {
+      return;
+    }
+
+    if (player.seatStatus === 'DEAD') {
+      throw new Error('Jogador morto não pode voltar para a disputa.');
+    }
+
+    if (this.phase === GamePhase.WAITING_PLAYERS || this.phase === GamePhase.ROUND_END) {
+      player.seatStatus = 'ACTIVE';
+      player.pendingReturn = false;
+      player.hasActed = false;
+      return;
+    }
+
+    player.seatStatus = 'AWAY';
+    player.pendingReturn = true;
+    this.removePlayerFromCurrentRound(player);
   }
 }

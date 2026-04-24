@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CardView } from './CardView';
 import type { BettingAction, Card, TableState } from '../types';
 import type { CSSProperties } from 'react';
+import { playSfx } from '../services/audio';
 
 type GameBoardProps = {
   table: TableState;
@@ -9,6 +10,9 @@ type GameBoardProps = {
   warningMessage: string;
   lastBetAction: { playerId: string; action: BettingAction } | null;
   onStartRound: () => void;
+  onSetRoundStake: (value: number) => void;
+  onSetSpectator: () => void;
+  onReturnNextRound: () => void;
   onBetAction: (action: BettingAction) => void;
   onPlayCard: (suit: string, rank: string) => void;
   sendingAction: boolean;
@@ -47,6 +51,9 @@ export function GameBoard({
   warningMessage,
   lastBetAction,
   onStartRound,
+  onSetRoundStake,
+  onSetSpectator,
+  onReturnNextRound,
   onBetAction,
   onPlayCard,
   sendingAction,
@@ -62,6 +69,8 @@ export function GameBoard({
   const myHandRef = useRef<HTMLDivElement | null>(null);
   const seatRefs = useRef<Map<string, HTMLLIElement | null>>(new Map());
   const prevTableRef = useRef<TableState | null>(null);
+  const prevWarningRef = useRef('');
+  const prevPhaseRef = useRef(table.phase);
   const animationTimeoutsRef = useRef<number[]>([]);
 
   const me = table.players.find((player) => player.id === meId) ?? null;
@@ -79,11 +88,18 @@ export function GameBoard({
     table.players.length >= 2;
 
   const canBet = table.phase === 'BETTING_PHASE' && isMyTurn && !isDealing;
+  const canSetStake =
+    (table.phase === 'WAITING_PLAYERS' || table.phase === 'ROUND_END') &&
+    !sendingAction &&
+    !isDealing;
+  const mySeatStatus = me?.seatStatus ?? 'SPECTATOR';
+  const canTogglePresence = !sendingAction && !isDealing && mySeatStatus !== 'DEAD';
   const canPlayCard =
     table.phase === 'PLAYING_CARDS' &&
     isMyTurn &&
     !table.isResolvingTrick &&
     !isDealing;
+  const isGameOver = table.phase === 'GAME_OVER';
 
   const totalPlayers = Math.max(table.players.length, 1);
   const seatStep = (Math.PI * 2) / totalPlayers;
@@ -98,6 +114,13 @@ export function GameBoard({
       : !table.isResolvingTrick && lastWinner
         ? `Ultima vaza: ${lastWinner.name}`
         : '';
+
+  const alivePlayers = table.players.filter((player) => player.seatStatus !== 'DEAD');
+  const potOwner = table.players.find((player) => player.id === table.potOwnerId) ?? null;
+  const gameOverTitle =
+    alivePlayers.length === 1
+      ? `Fim de jogo: ${alivePlayers[0].name} venceu a partida`
+      : 'Fim de jogo: restaram 2 jogadores na disputa';
 
   const reducedMotion = useMemo(
     () =>
@@ -187,6 +210,7 @@ export function GameBoard({
                   to: macacaPoint,
                   durationMs: flightDuration,
                 });
+                playSfx('deal');
                 setVisualMacacaCount((current) => Math.min(current + 1, 3));
                 await wait(delayBetweenCards);
               }
@@ -200,6 +224,7 @@ export function GameBoard({
                 to: seatPoint,
                 durationMs: flightDuration,
               });
+              playSfx('deal');
 
               await wait(delayBetweenCards);
             }
@@ -219,6 +244,7 @@ export function GameBoard({
             durationMs: revealDuration,
             flipOnArrival: true,
           });
+          playSfx('round_start');
 
           await wait(delayBetweenCards);
 
@@ -268,6 +294,7 @@ export function GameBoard({
           durationMs: 250,
           hidden: sourcePlayer ? false : true,
         });
+        playSfx('play');
       }
 
       if (
@@ -291,13 +318,37 @@ export function GameBoard({
             to: toPoint,
             durationMs: 240,
           });
+          playSfx('deal');
         }
         setVisualMacacaCount(table.macacaCount);
       }
+
+      if (
+        !prev.pendingTrickWinnerId &&
+        table.pendingTrickWinnerId &&
+        table.isResolvingTrick
+      ) {
+        playSfx('trick_win');
+      }
+
     }
 
     prevTableRef.current = table;
-  }, [lastBetAction, meId, reducedMotion, table]);
+  }, [lastBetAction, meId, reducedMotion, table, warningMessage]);
+
+  useEffect(() => {
+    if (!reducedMotion && warningMessage && warningMessage !== prevWarningRef.current) {
+      playSfx('warning');
+    }
+    prevWarningRef.current = warningMessage;
+  }, [reducedMotion, warningMessage]);
+
+  useEffect(() => {
+    if (!reducedMotion && prevPhaseRef.current !== 'GAME_OVER' && table.phase === 'GAME_OVER') {
+      playSfx('game_over');
+    }
+    prevPhaseRef.current = table.phase;
+  }, [reducedMotion, table.phase]);
 
   return (
     <div className="table-layout">
@@ -323,6 +374,15 @@ export function GameBoard({
             </div>
 
             <div className="table-center-hud">
+              <div className="pot-on-table" aria-live="polite">
+                <small>Pote atual</small>
+                <strong>{table.pot}</strong>
+                <div className="chip-row">
+                  <span className="chip">Boca {table.roundStake}</span>
+                  {potOwner ? <span className="chip">Dono: {potOwner.name}</span> : null}
+                </div>
+              </div>
+
               {centralMessage ? (
                 <p className={`winner-banner ${table.isResolvingTrick ? '' : 'subtle'}`}>
                   {centralMessage}
@@ -391,6 +451,7 @@ export function GameBoard({
                   isPendingWinner ? 'trick-winner' : '',
                   isLastWinner ? 'last-winner' : '',
                   isMePlayer ? 'is-me' : '',
+                  player.seatStatus !== 'ACTIVE' ? 'is-inactive' : '',
                 ]
                   .filter(Boolean)
                   .join(' ');
@@ -426,6 +487,26 @@ export function GameBoard({
                     <div className="tag-row">
                       {isMePlayer ? <span className="tag">voce</span> : null}
                       {isTurn ? <span className="tag tag-turn">vez</span> : null}
+                      {player.lastDecision ? (
+                        <span className="tag tag-action">
+                          {player.lastDecision === 'PLAY'
+                            ? 'jogou'
+                            : player.lastDecision === 'FOLD'
+                              ? 'desistiu'
+                              : 'pegou macaca'}
+                        </span>
+                      ) : null}
+                      {player.seatStatus !== 'ACTIVE' ? (
+                        <span className="tag tag-inactive">
+                          {player.seatStatus === 'AWAY'
+                            ? player.pendingReturn
+                              ? 'volta na proxima'
+                              : 'away'
+                            : player.seatStatus === 'DEAD'
+                              ? 'morto'
+                              : 'espectando'}
+                        </span>
+                      ) : null}
                       {isPendingWinner ? <span className="tag tag-winner">venceu vaza</span> : null}
                       {isLastWinner ? <span className="tag tag-last-winner">ultima vaza</span> : null}
                     </div>
@@ -452,6 +533,17 @@ export function GameBoard({
                 </div>
               )}
             </div>
+
+            {isGameOver ? (
+              <div className="game-over-overlay" role="status" aria-live="polite">
+                <h3>{gameOverTitle}</h3>
+                <p>
+                  {alivePlayers.length === 1
+                    ? 'A mesa foi encerrada. Volte ao lobby para iniciar uma nova partida.'
+                    : 'A mesa começou com mais de dois jogadores e encerrou ao restarem dois vivos.'}
+                </p>
+              </div>
+            ) : null}
 
             <div className="flying-layer" aria-hidden="true">
               {flyingCards.map((fly) => {
@@ -485,6 +577,40 @@ export function GameBoard({
       </section>
 
       <section className="action-dock" aria-label="Acoes da rodada">
+        <div className="stake-dock">
+          {[3, 6, 9, 12].map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={`btn btn-ghost ${table.roundStake === value ? 'is-selected' : ''}`}
+              onClick={() => onSetRoundStake(value)}
+              disabled={!canSetStake}
+            >
+              Boca {value}
+            </button>
+          ))}
+
+          {mySeatStatus === 'ACTIVE' ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={onSetSpectator}
+              disabled={!canTogglePresence}
+            >
+              Espectar
+            </button>
+          ) : mySeatStatus === 'AWAY' || mySeatStatus === 'SPECTATOR' ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={onReturnNextRound}
+              disabled={!canTogglePresence}
+            >
+              Voltar
+            </button>
+          ) : null}
+        </div>
+
         <button
           type="button"
           className="btn btn-primary"

@@ -218,6 +218,16 @@ input {
   border-color: rgba(147, 192, 166, 0.55);
 }
 
+.tag-action {
+  border-color: rgba(119, 174, 214, 0.62);
+  background: rgba(16, 43, 62, 0.78);
+}
+
+.tag-inactive {
+  border-color: rgba(175, 175, 175, 0.45);
+  background: rgba(48, 48, 48, 0.6);
+}
+
 .lobby-form {
   display: grid;
   gap: 0.75rem;
@@ -243,6 +253,22 @@ input {
 
 .table-info-bar h1 {
   margin: 0.2rem 0 0;
+}
+
+.audio-volume-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.64rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: rgba(17, 40, 32, 0.52);
+  color: var(--text-main);
+  font-size: 0.82rem;
+}
+
+.audio-volume-control input[type='range'] {
+  width: 88px;
 }
 
 .table-layout {
@@ -406,6 +432,11 @@ input {
   padding-bottom: 0.48rem;
 }
 
+.table-seat.is-inactive {
+  opacity: 0.48;
+  filter: saturate(0.65);
+}
+
 .dealer-chip {
   position: absolute;
   right: -10px;
@@ -433,6 +464,22 @@ input {
   gap: 0.5rem;
   justify-items: center;
   z-index: 6;
+}
+
+.pot-on-table {
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(226, 183, 93, 0.55);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(49, 72, 54, 0.9), rgba(22, 42, 31, 0.84));
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+}
+
+.pot-on-table strong {
+  font-size: 1.25rem;
+  color: #ffe4a9;
 }
 
 .trick-center {
@@ -570,6 +617,31 @@ input {
   cursor: default;
 }
 
+.game-over-overlay {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(86%, 560px);
+  border: 1px solid rgba(255, 204, 127, 0.64);
+  border-radius: 16px;
+  padding: 1rem 1.15rem;
+  background: linear-gradient(180deg, rgba(29, 44, 33, 0.92), rgba(14, 25, 18, 0.92));
+  backdrop-filter: blur(4px);
+  z-index: 20;
+  text-align: center;
+  box-shadow: 0 22px 36px rgba(0, 0, 0, 0.42);
+}
+
+.game-over-overlay h3 {
+  margin: 0;
+}
+
+.game-over-overlay p {
+  margin: 0.5rem 0 0;
+  color: var(--text-muted);
+}
+
 .action-dock {
   justify-self: center;
   width: min(100%, 840px);
@@ -579,6 +651,17 @@ input {
   align-items: center;
   gap: 0.55rem;
   padding: 0.35rem 0.5rem 0.2rem;
+}
+
+.stake-dock {
+  display: flex;
+  gap: 0.35rem;
+  margin-right: 0.4rem;
+}
+
+.stake-dock .btn.is-selected {
+  border-color: rgba(226, 183, 93, 0.85);
+  background: rgba(96, 72, 26, 0.7);
 }
 
 .compact-status {

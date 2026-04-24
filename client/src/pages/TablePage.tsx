@@ -5,6 +5,8 @@ import { getSocket, disconnectSocket } from '../services/socket';
 import {
   getState,
   resetGameState,
+  setAudioMuted,
+  setAudioVolume,
   setErrorMessage,
   setLobbyData,
   setSocketConnected,
@@ -14,6 +16,7 @@ import {
 } from '../state';
 import { useAppState } from '../hooks/useAppState';
 import type { BettingAction, Rank, Suit, TableState } from '../types';
+import { setAudioMuted as syncAudioMuted, setAudioVolume as syncAudioVolume, unlockAudio } from '../services/audio';
 
 type SocketAck = {
   status: 'sucesso' | 'erro';
@@ -46,7 +49,6 @@ export function TablePage() {
   const navigate = useNavigate();
   const params = useParams();
   const app = useAppState();
-  const [mySocketId, setMySocketId] = useState<string | null>(null);
   const [sendingAction, setSendingAction] = useState(false);
   const [lastBetAction, setLastBetAction] = useState<{
     playerId: string;
@@ -58,6 +60,11 @@ export function TablePage() {
     [params.mesaId],
   );
   const playerName = app.game.playerName || app.auth.username || '';
+
+  useEffect(() => {
+    syncAudioMuted(app.game.audioMuted);
+    syncAudioVolume(app.game.audioVolume);
+  }, [app.game.audioMuted, app.game.audioVolume]);
 
   useEffect(() => {
     if (!routeTableId || !app.auth.token) {
@@ -76,11 +83,11 @@ export function TablePage() {
     const socket = getSocket(app.auth.token);
 
     const onConnect = () => {
-      setMySocketId(socket.id ?? null);
       setSocketConnected(true);
       setErrorMessage('');
       setWarningMessage('');
       setStatusMessage('Conectado ao servidor. Entrando na mesa...');
+      unlockAudio();
 
       socket.emit(
         'entrar_na_mesa',
@@ -128,6 +135,10 @@ export function TablePage() {
       );
     };
 
+    const onAutoAway = (payload: { mensagem?: string }) => {
+      setWarningMessage(payload?.mensagem ?? 'Jogador ausente removido da rodada.');
+    };
+
     const onBetActionProcessed = (payload: {
       playerId?: string;
       acao?: BettingAction;
@@ -145,6 +156,7 @@ export function TablePage() {
     socket.on('rodada_iniciada', onRoundStarted);
     socket.on('jogador_entrou', onPlayerJoined);
     socket.on('acao_aposta_processada', onBetActionProcessed);
+    socket.on('jogador_away_auto', onAutoAway);
     socket.on('error', onError);
 
     if (socket.connected) {
@@ -158,6 +170,7 @@ export function TablePage() {
       socket.off('rodada_iniciada', onRoundStarted);
       socket.off('jogador_entrou', onPlayerJoined);
       socket.off('acao_aposta_processada', onBetActionProcessed);
+      socket.off('jogador_away_auto', onAutoAway);
       socket.off('error', onError);
     };
   }, [app.auth.token, playerName, routeTableId]);
@@ -211,8 +224,28 @@ export function TablePage() {
     navigate('/lobby', { replace: true });
   }
 
+  function handleToggleMute() {
+    setAudioMuted(!app.game.audioMuted);
+  }
+
+  function handleVolumeChange(nextValue: number) {
+    setAudioVolume(nextValue / 100);
+  }
+
   function handleStartRound() {
     runAction(() => emitWithAck('iniciar_jogo', { mesaId: routeTableId }));
+  }
+
+  function handleSetRoundStake(value: number) {
+    runAction(() => emitWithAck('definir_boca', { mesaId: routeTableId, valor: value }));
+  }
+
+  function handleSetSpectator() {
+    runAction(() => emitWithAck('virar_espectador', { mesaId: routeTableId }));
+  }
+
+  function handleReturnNextRound() {
+    runAction(() => emitWithAck('voltar_para_rodada', { mesaId: routeTableId }));
   }
 
   function handleBetAction(action: BettingAction) {
@@ -255,6 +288,20 @@ export function TablePage() {
           <span className="chip">Naipe da mesa: {app.game.table?.service ?? '-'}</span>
         </div>
         <div className="button-row">
+          <button type="button" className="btn btn-ghost" onClick={handleToggleMute}>
+            Som: {app.game.audioMuted ? 'off' : 'on'}
+          </button>
+          <label className="audio-volume-control">
+            Vol
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round(app.game.audioVolume * 100)}
+              onChange={(event) => handleVolumeChange(Number(event.target.value))}
+            />
+          </label>
           <Link className="btn btn-ghost" to="/lobby">
             Lobby
           </Link>
@@ -286,10 +333,13 @@ export function TablePage() {
       {app.game.table ? (
         <GameBoard
           table={app.game.table}
-          meId={mySocketId}
+          meId={app.auth.userId}
           warningMessage={app.game.warningMessage}
           lastBetAction={lastBetAction}
           onStartRound={handleStartRound}
+          onSetRoundStake={handleSetRoundStake}
+          onSetSpectator={handleSetSpectator}
+          onReturnNextRound={handleReturnNextRound}
           onBetAction={handleBetAction}
           onPlayCard={handlePlayCard}
           sendingAction={sendingAction}
