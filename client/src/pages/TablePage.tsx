@@ -223,6 +223,14 @@ export function TablePage() {
     runAction(() => emitWithAck('definir_boca', { mesaId: routeTableId, valor: value }));
   }
 
+  function handleSetSpectator() {
+    runAction(() => emitWithAck('virar_espectador', { mesaId: routeTableId }));
+  }
+
+  function handleReturnNextRound() {
+    runAction(() => emitWithAck('voltar_para_rodada', { mesaId: routeTableId }));
+  }
+
   function handleBetAction(action: BettingAction) {
     runAction(() =>
       emitWithAck('acao_aposta', { mesaId: routeTableId, acao: action }),
@@ -299,6 +307,8 @@ export function TablePage() {
           lastBetAction={lastBetAction}
           onStartRound={handleStartRound}
           onSetRoundStake={handleSetRoundStake}
+          onSetSpectator={handleSetSpectator}
+          onReturnNextRound={handleReturnNextRound}
           onBetAction={handleBetAction}
           onPlayCard={handlePlayCard}
           sendingAction={sendingAction}

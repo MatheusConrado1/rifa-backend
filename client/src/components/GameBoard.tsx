@@ -10,6 +10,8 @@ type GameBoardProps = {
   lastBetAction: { playerId: string; action: BettingAction } | null;
   onStartRound: () => void;
   onSetRoundStake: (value: number) => void;
+  onSetSpectator: () => void;
+  onReturnNextRound: () => void;
   onBetAction: (action: BettingAction) => void;
   onPlayCard: (suit: string, rank: string) => void;
   sendingAction: boolean;
@@ -49,6 +51,8 @@ export function GameBoard({
   lastBetAction,
   onStartRound,
   onSetRoundStake,
+  onSetSpectator,
+  onReturnNextRound,
   onBetAction,
   onPlayCard,
   sendingAction,
@@ -85,6 +89,8 @@ export function GameBoard({
     (table.phase === 'WAITING_PLAYERS' || table.phase === 'ROUND_END') &&
     !sendingAction &&
     !isDealing;
+  const mySeatStatus = me?.seatStatus ?? 'SPECTATOR';
+  const canTogglePresence = !sendingAction && !isDealing && mySeatStatus !== 'DEAD';
   const canPlayCard =
     table.phase === 'PLAYING_CARDS' &&
     isMyTurn &&
@@ -524,6 +530,26 @@ export function GameBoard({
               Boca {value}
             </button>
           ))}
+
+          {mySeatStatus === 'ACTIVE' ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={onSetSpectator}
+              disabled={!canTogglePresence}
+            >
+              Espectar
+            </button>
+          ) : mySeatStatus === 'AWAY' || mySeatStatus === 'SPECTATOR' ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={onReturnNextRound}
+              disabled={!canTogglePresence}
+            >
+              Voltar
+            </button>
+          ) : null}
         </div>
 
         <button

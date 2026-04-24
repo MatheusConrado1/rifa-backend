@@ -353,4 +353,62 @@ export class GameGateway
       return { status: 'erro', mensagem: error.message };
     }
   }
+
+  @SubscribeMessage('virar_espectador')
+  async handleSetSpectator(
+    @MessageBody() data: { mesaId: string },
+    @ConnectedSocket() client: Socket,
+  ): Promise<{ status: string; mensagem?: string }> {
+    if (!data?.mesaId) {
+      return { status: 'erro', mensagem: 'Payload inválido.' };
+    }
+    if (!client.data.user) {
+      return { status: 'erro', mensagem: 'Não autorizado.' };
+    }
+
+    const table = this.activeTables.get(data.mesaId);
+    if (!table) return { status: 'erro', mensagem: 'Mesa não encontrada.' };
+
+    try {
+      const userId = this.getAuthenticatedUserId(client);
+      table.setPlayerSpectator(userId);
+      this.broadcastTableState(table);
+      this.scheduleAfkTimer(data.mesaId, table);
+      return { status: 'sucesso', mensagem: 'Você agora está espectando a mesa.' };
+    } catch (error: any) {
+      return { status: 'erro', mensagem: error.message };
+    }
+  }
+
+  @SubscribeMessage('voltar_para_rodada')
+  async handleReturnNextRound(
+    @MessageBody() data: { mesaId: string },
+    @ConnectedSocket() client: Socket,
+  ): Promise<{ status: string; mensagem?: string }> {
+    if (!data?.mesaId) {
+      return { status: 'erro', mensagem: 'Payload inválido.' };
+    }
+    if (!client.data.user) {
+      return { status: 'erro', mensagem: 'Não autorizado.' };
+    }
+
+    const table = this.activeTables.get(data.mesaId);
+    if (!table) return { status: 'erro', mensagem: 'Mesa não encontrada.' };
+
+    try {
+      const userId = this.getAuthenticatedUserId(client);
+      table.setPlayerReturnNextRound(userId);
+      this.broadcastTableState(table);
+      this.scheduleAfkTimer(data.mesaId, table);
+      return {
+        status: 'sucesso',
+        mensagem:
+          table.phase === GamePhase.WAITING_PLAYERS || table.phase === GamePhase.ROUND_END
+            ? 'Você voltou para a disputa.'
+            : 'Você vai voltar na próxima rodada.',
+      };
+    } catch (error: any) {
+      return { status: 'erro', mensagem: error.message };
+    }
+  }
 }
