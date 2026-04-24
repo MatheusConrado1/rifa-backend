@@ -255,6 +255,22 @@ input {
   margin: 0.2rem 0 0;
 }
 
+.audio-volume-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.64rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: rgba(17, 40, 32, 0.52);
+  color: var(--text-main);
+  font-size: 0.82rem;
+}
+
+.audio-volume-control input[type='range'] {
+  width: 88px;
+}
+
 .table-layout {
   display: grid;
   gap: 0.45rem;

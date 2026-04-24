@@ -16,6 +16,8 @@ type GameState = {
   warningMessage: string;
   errorMessage: string;
   socketConnected: boolean;
+  audioMuted: boolean;
+  audioVolume: number;
 };
 
 type AppState = {
@@ -28,6 +30,8 @@ const USERNAME_KEY = 'rifa.username';
 const USER_ID_KEY = 'rifa.userId';
 const TABLE_KEY = 'rifa.tableId';
 const NAME_KEY = 'rifa.playerName';
+const AUDIO_MUTED_KEY = 'rifa.audioMuted';
+const AUDIO_VOLUME_KEY = 'rifa.audioVolume';
 
 let state: AppState = {
   auth: {
@@ -43,6 +47,8 @@ let state: AppState = {
     warningMessage: '',
     errorMessage: '',
     socketConnected: false,
+    audioMuted: localStorage.getItem(AUDIO_MUTED_KEY) === '1',
+    audioVolume: Number(localStorage.getItem(AUDIO_VOLUME_KEY) ?? '0.65'),
   },
 };
 
@@ -119,6 +125,36 @@ export function setSocketConnected(connected: boolean): void {
       socketConnected: connected,
     },
   };
+  notify();
+}
+
+export function setAudioMuted(muted: boolean): void {
+  state = {
+    ...state,
+    game: {
+      ...state.game,
+      audioMuted: muted,
+    },
+  };
+
+  if (muted) {
+    localStorage.setItem(AUDIO_MUTED_KEY, '1');
+  } else {
+    localStorage.removeItem(AUDIO_MUTED_KEY);
+  }
+  notify();
+}
+
+export function setAudioVolume(volume: number): void {
+  const normalized = Math.max(0, Math.min(1, volume));
+  state = {
+    ...state,
+    game: {
+      ...state.game,
+      audioVolume: normalized,
+    },
+  };
+  localStorage.setItem(AUDIO_VOLUME_KEY, String(normalized));
   notify();
 }
 

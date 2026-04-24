@@ -5,6 +5,8 @@ import { getSocket, disconnectSocket } from '../services/socket';
 import {
   getState,
   resetGameState,
+  setAudioMuted,
+  setAudioVolume,
   setErrorMessage,
   setLobbyData,
   setSocketConnected,
@@ -14,6 +16,7 @@ import {
 } from '../state';
 import { useAppState } from '../hooks/useAppState';
 import type { BettingAction, Rank, Suit, TableState } from '../types';
+import { setAudioMuted as syncAudioMuted, setAudioVolume as syncAudioVolume, unlockAudio } from '../services/audio';
 
 type SocketAck = {
   status: 'sucesso' | 'erro';
@@ -59,6 +62,11 @@ export function TablePage() {
   const playerName = app.game.playerName || app.auth.username || '';
 
   useEffect(() => {
+    syncAudioMuted(app.game.audioMuted);
+    syncAudioVolume(app.game.audioVolume);
+  }, [app.game.audioMuted, app.game.audioVolume]);
+
+  useEffect(() => {
     if (!routeTableId || !app.auth.token) {
       return;
     }
@@ -79,6 +87,7 @@ export function TablePage() {
       setErrorMessage('');
       setWarningMessage('');
       setStatusMessage('Conectado ao servidor. Entrando na mesa...');
+      unlockAudio();
 
       socket.emit(
         'entrar_na_mesa',
@@ -215,6 +224,14 @@ export function TablePage() {
     navigate('/lobby', { replace: true });
   }
 
+  function handleToggleMute() {
+    setAudioMuted(!app.game.audioMuted);
+  }
+
+  function handleVolumeChange(nextValue: number) {
+    setAudioVolume(nextValue / 100);
+  }
+
   function handleStartRound() {
     runAction(() => emitWithAck('iniciar_jogo', { mesaId: routeTableId }));
   }
@@ -271,6 +288,20 @@ export function TablePage() {
           <span className="chip">Naipe da mesa: {app.game.table?.service ?? '-'}</span>
         </div>
         <div className="button-row">
+          <button type="button" className="btn btn-ghost" onClick={handleToggleMute}>
+            Som: {app.game.audioMuted ? 'off' : 'on'}
+          </button>
+          <label className="audio-volume-control">
+            Vol
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round(app.game.audioVolume * 100)}
+              onChange={(event) => handleVolumeChange(Number(event.target.value))}
+            />
+          </label>
           <Link className="btn btn-ghost" to="/lobby">
             Lobby
           </Link>

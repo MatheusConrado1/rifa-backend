@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CardView } from './CardView';
 import type { BettingAction, Card, TableState } from '../types';
 import type { CSSProperties } from 'react';
+import { playSfx } from '../services/audio';
 
 type GameBoardProps = {
   table: TableState;
@@ -68,6 +69,8 @@ export function GameBoard({
   const myHandRef = useRef<HTMLDivElement | null>(null);
   const seatRefs = useRef<Map<string, HTMLLIElement | null>>(new Map());
   const prevTableRef = useRef<TableState | null>(null);
+  const prevWarningRef = useRef('');
+  const prevPhaseRef = useRef(table.phase);
   const animationTimeoutsRef = useRef<number[]>([]);
 
   const me = table.players.find((player) => player.id === meId) ?? null;
@@ -207,6 +210,7 @@ export function GameBoard({
                   to: macacaPoint,
                   durationMs: flightDuration,
                 });
+                playSfx('deal');
                 setVisualMacacaCount((current) => Math.min(current + 1, 3));
                 await wait(delayBetweenCards);
               }
@@ -220,6 +224,7 @@ export function GameBoard({
                 to: seatPoint,
                 durationMs: flightDuration,
               });
+              playSfx('deal');
 
               await wait(delayBetweenCards);
             }
@@ -239,6 +244,7 @@ export function GameBoard({
             durationMs: revealDuration,
             flipOnArrival: true,
           });
+          playSfx('round_start');
 
           await wait(delayBetweenCards);
 
@@ -288,6 +294,7 @@ export function GameBoard({
           durationMs: 250,
           hidden: sourcePlayer ? false : true,
         });
+        playSfx('play');
       }
 
       if (
@@ -311,13 +318,37 @@ export function GameBoard({
             to: toPoint,
             durationMs: 240,
           });
+          playSfx('deal');
         }
         setVisualMacacaCount(table.macacaCount);
       }
+
+      if (
+        !prev.pendingTrickWinnerId &&
+        table.pendingTrickWinnerId &&
+        table.isResolvingTrick
+      ) {
+        playSfx('trick_win');
+      }
+
     }
 
     prevTableRef.current = table;
-  }, [lastBetAction, meId, reducedMotion, table]);
+  }, [lastBetAction, meId, reducedMotion, table, warningMessage]);
+
+  useEffect(() => {
+    if (!reducedMotion && warningMessage && warningMessage !== prevWarningRef.current) {
+      playSfx('warning');
+    }
+    prevWarningRef.current = warningMessage;
+  }, [reducedMotion, warningMessage]);
+
+  useEffect(() => {
+    if (!reducedMotion && prevPhaseRef.current !== 'GAME_OVER' && table.phase === 'GAME_OVER') {
+      playSfx('game_over');
+    }
+    prevPhaseRef.current = table.phase;
+  }, [reducedMotion, table.phase]);
 
   return (
     <div className="table-layout">
