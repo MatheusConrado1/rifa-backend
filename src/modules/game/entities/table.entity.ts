@@ -221,25 +221,24 @@ export class Table {
       this.dealerIndex = nextDealer;
     }
 
-    const dealer = this.players[this.dealerIndex];
-    const dealerPayment = dealer.payCoins(this.roundStake);
-    this.pot += dealerPayment;
-    if (dealerPayment < this.roundStake) {
-      this.markPlayerDead(dealer);
-    }
-
     for (const player of this.players) {
       player.lastDecision = null;
 
-      if (player.pendingPenalty > 0) {
-        const penaltyToPay = player.pendingPenalty;
-        const paidPenalty = player.payCoins(penaltyToPay);
-        this.pot += paidPenalty;
-        if (paidPenalty < penaltyToPay) {
+      const dealerCharge = player.id === this.players[this.dealerIndex].id ? this.roundStake : 0;
+      const penaltyCharge = player.pendingPenalty;
+      const requiredPayment = dealerCharge + penaltyCharge;
+      const coinsBeforeCharge = player.coins;
+
+      if (requiredPayment > 0) {
+        const paidAmount = player.payCoins(requiredPayment);
+        this.pot += paidAmount;
+
+        if (coinsBeforeCharge === 0) {
           this.markPlayerDead(player);
         }
-        player.pendingPenalty = 0;
       }
+
+      player.pendingPenalty = 0;
     }
 
     for (const player of this.players) {

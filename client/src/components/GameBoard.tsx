@@ -96,6 +96,7 @@ export function GameBoard({
     isMyTurn &&
     !table.isResolvingTrick &&
     !isDealing;
+  const isGameOver = table.phase === 'GAME_OVER';
 
   const totalPlayers = Math.max(table.players.length, 1);
   const seatStep = (Math.PI * 2) / totalPlayers;
@@ -110,6 +111,13 @@ export function GameBoard({
       : !table.isResolvingTrick && lastWinner
         ? `Ultima vaza: ${lastWinner.name}`
         : '';
+
+  const alivePlayers = table.players.filter((player) => player.seatStatus !== 'DEAD');
+  const potOwner = table.players.find((player) => player.id === table.potOwnerId) ?? null;
+  const gameOverTitle =
+    alivePlayers.length === 1
+      ? `Fim de jogo: ${alivePlayers[0].name} venceu a partida`
+      : 'Fim de jogo: restaram 2 jogadores na disputa';
 
   const reducedMotion = useMemo(
     () =>
@@ -335,6 +343,15 @@ export function GameBoard({
             </div>
 
             <div className="table-center-hud">
+              <div className="pot-on-table" aria-live="polite">
+                <small>Pote atual</small>
+                <strong>{table.pot}</strong>
+                <div className="chip-row">
+                  <span className="chip">Boca {table.roundStake}</span>
+                  {potOwner ? <span className="chip">Dono: {potOwner.name}</span> : null}
+                </div>
+              </div>
+
               {centralMessage ? (
                 <p className={`winner-banner ${table.isResolvingTrick ? '' : 'subtle'}`}>
                   {centralMessage}
@@ -485,6 +502,17 @@ export function GameBoard({
                 </div>
               )}
             </div>
+
+            {isGameOver ? (
+              <div className="game-over-overlay" role="status" aria-live="polite">
+                <h3>{gameOverTitle}</h3>
+                <p>
+                  {alivePlayers.length === 1
+                    ? 'A mesa foi encerrada. Volte ao lobby para iniciar uma nova partida.'
+                    : 'A mesa começou com mais de dois jogadores e encerrou ao restarem dois vivos.'}
+                </p>
+              </div>
+            ) : null}
 
             <div className="flying-layer" aria-hidden="true">
               {flyingCards.map((fly) => {

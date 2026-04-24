@@ -450,6 +450,22 @@ input {
   z-index: 6;
 }
 
+.pot-on-table {
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(226, 183, 93, 0.55);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(49, 72, 54, 0.9), rgba(22, 42, 31, 0.84));
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+}
+
+.pot-on-table strong {
+  font-size: 1.25rem;
+  color: #ffe4a9;
+}
+
 .trick-center {
   min-height: 130px;
   display: flex;
@@ -583,6 +599,31 @@ input {
 
 .flying-card button.playing-card {
   cursor: default;
+}
+
+.game-over-overlay {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(86%, 560px);
+  border: 1px solid rgba(255, 204, 127, 0.64);
+  border-radius: 16px;
+  padding: 1rem 1.15rem;
+  background: linear-gradient(180deg, rgba(29, 44, 33, 0.92), rgba(14, 25, 18, 0.92));
+  backdrop-filter: blur(4px);
+  z-index: 20;
+  text-align: center;
+  box-shadow: 0 22px 36px rgba(0, 0, 0, 0.42);
+}
+
+.game-over-overlay h3 {
+  margin: 0;
+}
+
+.game-over-overlay p {
+  margin: 0.5rem 0 0;
+  color: var(--text-muted);
 }
 
 .action-dock {
