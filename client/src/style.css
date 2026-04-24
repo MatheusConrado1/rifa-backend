@@ -581,6 +581,17 @@ input {
   padding: 0.35rem 0.5rem 0.2rem;
 }
 
+.stake-dock {
+  display: flex;
+  gap: 0.35rem;
+  margin-right: 0.4rem;
+}
+
+.stake-dock .btn.is-selected {
+  border-color: rgba(226, 183, 93, 0.85);
+  background: rgba(96, 72, 26, 0.7);
+}
+
 .compact-status {
   margin-top: 0.15rem;
 }

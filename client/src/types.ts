@@ -37,6 +37,8 @@ export type TableState = {
   id: string;
   phase: GamePhase;
   pot: number;
+  roundStake: number;
+  potOwnerId: string | null;
   manilha: Suit | null;
   service: Suit | null;
   currentTrickCards: TrickCard[];
@@ -54,4 +56,6 @@ export type TableState = {
 
 export type AuthResponse = {
   accessToken: string;
+  userId: string;
+  username: string;
 };

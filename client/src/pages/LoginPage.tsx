@@ -28,7 +28,7 @@ export function LoginPage() {
     try {
       const normalized = username.trim().toLowerCase();
       const data = await login({ username: normalized, password });
-      setToken(data.accessToken, normalized);
+      setToken(data.accessToken, data.username, data.userId);
       navigate('/lobby', { replace: true });
     } catch (submitError) {
       setError(

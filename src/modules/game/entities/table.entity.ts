@@ -31,6 +31,9 @@ export class Table {
   public pot: number = 0;
   public contestedPot: number = 0;
   public readonly ROUND_BASELINE = 3;
+  public roundStake: number = 3;
+  public potOwnerId: string | null = null;
+  public initialPlayerCount: number = 0;
   public macaca: Card[] = [];
   public manilha: Suit | null = null;
   public manilhaCard: Card | null = null;
@@ -50,10 +53,19 @@ export class Table {
   constructor(public readonly id: string) {}
 
   addPlayer(player: Player): void {
+    const existing = this.players.find((p) => p.id === player.id);
+    if (existing) {
+      existing.socketId = player.socketId;
+      existing.name = player.name;
+      return;
+    }
+
     if (this.phase !== GamePhase.WAITING_PLAYERS) {
       throw new Error('O jogo já começou, não é possível entrar agora.');
     }
+
     this.players.push(player);
+    this.initialPlayerCount = Math.max(this.initialPlayerCount, this.players.length);
   }
 
   startRound(): void {
@@ -64,7 +76,7 @@ export class Table {
     this.deck = new Deck();
 
     const dealer = this.players[this.dealerIndex];
-    const dealerPayment = dealer.payCoins(this.ROUND_BASELINE);
+    const dealerPayment = dealer.payCoins(this.roundStake);
     this.pot += dealerPayment;
 
     for (const player of this.players) {
@@ -111,18 +123,10 @@ export class Table {
     if (action === 'FOLD') {
       currentPlayer.isPlayingRound = false;
     } else if (action === 'PLAY') {
-      if (!currentPlayer.hasPaid) {
-        const payment = currentPlayer.payCoins(this.ROUND_BASELINE);
-        this.pot += payment;
-      }
       currentPlayer.isPlayingRound = true;
     } else if (action === 'MACACA') {
       if (this.macaca.length === 0) {
         throw new Error('Alguém já pegou a Macaca nesta rodada!');
-      }
-      if (!currentPlayer.hasPaid) {
-        const payment = currentPlayer.payCoins(this.ROUND_BASELINE);
-        this.pot += payment;
       }
       currentPlayer.isPlayingRound = true;
 
@@ -316,7 +320,6 @@ export class Table {
         player.coins += payout;
         totalPayout += payout;
       }
-      player.hasPaid = false;
     }
 
     this.pot -= totalPayout;
@@ -338,10 +341,12 @@ export class Table {
 
     this.players = this.players.filter((p) => p.coins > 0);
 
-    if (this.players.length === 1) {
-      this.phase = GamePhase.GAME_OVER;
-      return;
-    } else if (this.players.length === 0) {
+    if (this.initialPlayerCount <= 2) {
+      if (this.players.length <= 1) {
+        this.phase = GamePhase.GAME_OVER;
+        return;
+      }
+    } else if (this.players.length <= 2) {
       this.phase = GamePhase.GAME_OVER;
       return;
     }
@@ -369,6 +374,8 @@ export class Table {
       id: this.id,
       phase: this.phase,
       pot: this.pot,
+      roundStake: this.roundStake,
+      potOwnerId: this.potOwnerId,
       manilha: this.manilha,
       service: this.service,
       currentTrickCards: this.currentTrickCards,
@@ -397,5 +404,38 @@ export class Table {
         };
       }),
     };
+  }
+
+  setRoundStake(playerId: string, requestedStake: number): void {
+    const allowedStakes = [3, 6, 9, 12];
+
+    if (this.phase !== GamePhase.WAITING_PLAYERS && this.phase !== GamePhase.ROUND_END) {
+      throw new Error('A boca só pode ser ajustada entre rodadas.');
+    }
+
+    if (!allowedStakes.includes(requestedStake)) {
+      throw new Error('Valor de boca inválido. Use 3, 6, 9 ou 12.');
+    }
+
+    const player = this.players.find((p) => p.id === playerId);
+    if (!player) {
+      throw new Error('Jogador não encontrado na mesa.');
+    }
+
+    if (requestedStake > this.roundStake) {
+      if (player.coins < requestedStake) {
+        throw new Error(`Você precisa ter pelo menos ${requestedStake} moedas para aumentar a boca.`);
+      }
+      this.roundStake = requestedStake;
+      this.potOwnerId = playerId;
+      return;
+    }
+
+    if (requestedStake < this.roundStake) {
+      if (!this.potOwnerId || this.potOwnerId !== playerId) {
+        throw new Error('Somente o dono da boca pode diminuir o valor.');
+      }
+      this.roundStake = requestedStake;
+    }
   }
 }

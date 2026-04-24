@@ -46,7 +46,6 @@ export function TablePage() {
   const navigate = useNavigate();
   const params = useParams();
   const app = useAppState();
-  const [mySocketId, setMySocketId] = useState<string | null>(null);
   const [sendingAction, setSendingAction] = useState(false);
   const [lastBetAction, setLastBetAction] = useState<{
     playerId: string;
@@ -76,7 +75,6 @@ export function TablePage() {
     const socket = getSocket(app.auth.token);
 
     const onConnect = () => {
-      setMySocketId(socket.id ?? null);
       setSocketConnected(true);
       setErrorMessage('');
       setWarningMessage('');
@@ -215,6 +213,10 @@ export function TablePage() {
     runAction(() => emitWithAck('iniciar_jogo', { mesaId: routeTableId }));
   }
 
+  function handleSetRoundStake(value: number) {
+    runAction(() => emitWithAck('definir_boca', { mesaId: routeTableId, valor: value }));
+  }
+
   function handleBetAction(action: BettingAction) {
     runAction(() =>
       emitWithAck('acao_aposta', { mesaId: routeTableId, acao: action }),
@@ -286,10 +288,11 @@ export function TablePage() {
       {app.game.table ? (
         <GameBoard
           table={app.game.table}
-          meId={mySocketId}
+          meId={app.auth.userId}
           warningMessage={app.game.warningMessage}
           lastBetAction={lastBetAction}
           onStartRound={handleStartRound}
+          onSetRoundStake={handleSetRoundStake}
           onBetAction={handleBetAction}
           onPlayCard={handlePlayCard}
           sendingAction={sendingAction}

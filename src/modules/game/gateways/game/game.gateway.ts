@@ -35,9 +35,20 @@ export class GameGateway
     await new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  private getAuthenticatedUserId(client: Socket): string {
+    const payload = client.data.user as
+      | { sub?: string; userId?: string }
+      | undefined;
+    const userId = payload?.sub ?? payload?.userId;
+    if (!userId) {
+      throw new Error('Não autorizado.');
+    }
+    return userId;
+  }
+
   private broadcastTableState(table: Table): void {
     for (const player of table.players) {
-      this.server.to(player.id).emit('estado_atualizado', {
+      this.server.to(player.socketId).emit('estado_atualizado', {
         mesa: table.getSanitizedState(player.id),
       });
     }
@@ -101,7 +112,8 @@ export class GameGateway
     }
 
     try {
-      const player = new Player(client.id, data.nome);
+      const userId = this.getAuthenticatedUserId(client);
+      const player = new Player(userId, data.nome, client.id);
       table.addPlayer(player);
       console.log(`👤 ${data.nome} sentou na mesa ${data.mesaId}`);
     } catch (error: any) {
@@ -114,7 +126,7 @@ export class GameGateway
 
     client.to(data.mesaId).emit('jogador_entrou', {
       mensagem: `${data.nome} sentou na mesa!`,
-      jogadorId: client.id,
+      jogadorId: this.getAuthenticatedUserId(client),
       jogadoresTotais: table.players.length,
     });
 
@@ -155,7 +167,7 @@ export class GameGateway
       console.log(`Rodada iniciada na mesa ${data.mesaId}!`);
 
       for (const player of table.players) {
-        this.server.to(player.id).emit('rodada_iniciada', {
+        this.server.to(player.socketId).emit('rodada_iniciada', {
           mensagem: 'O jogo começou!',
           mesa: table.getSanitizedState(player.id),
         });
@@ -182,10 +194,11 @@ export class GameGateway
     if (!table) return { status: 'erro', mensagem: 'Mesa não encontrada.' };
 
     try {
-      table.processBettingAction(client.id, data.acao);
+      const userId = this.getAuthenticatedUserId(client);
+      table.processBettingAction(userId, data.acao);
 
       this.server.to(data.mesaId).emit('acao_aposta_processada', {
-        playerId: client.id,
+        playerId: userId,
         acao: data.acao,
       });
 
@@ -212,7 +225,8 @@ export class GameGateway
     if (!table) return { status: 'erro', mensagem: 'Mesa não encontrada.' };
 
     try {
-      table.playCard(client.id, data.suit, data.rank);
+      const userId = this.getAuthenticatedUserId(client);
+      table.playCard(userId, data.suit, data.rank);
 
       this.broadcastTableState(table);
 
@@ -223,6 +237,31 @@ export class GameGateway
       }
 
       return { status: 'sucesso' };
+    } catch (error: any) {
+      return { status: 'erro', mensagem: error.message };
+    }
+  }
+
+  @SubscribeMessage('definir_boca')
+  async handleSetRoundStake(
+    @MessageBody() data: { mesaId: string; valor: number },
+    @ConnectedSocket() client: Socket,
+  ): Promise<{ status: string; mensagem?: string }> {
+    if (!data?.mesaId || typeof data?.valor !== 'number') {
+      return { status: 'erro', mensagem: 'Payload inválido.' };
+    }
+    if (!client.data.user) {
+      return { status: 'erro', mensagem: 'Não autorizado.' };
+    }
+
+    const table = this.activeTables.get(data.mesaId);
+    if (!table) return { status: 'erro', mensagem: 'Mesa não encontrada.' };
+
+    try {
+      const userId = this.getAuthenticatedUserId(client);
+      table.setRoundStake(userId, data.valor);
+      this.broadcastTableState(table);
+      return { status: 'sucesso', mensagem: `Boca ajustada para ${table.roundStake}.` };
     } catch (error: any) {
       return { status: 'erro', mensagem: error.message };
     }

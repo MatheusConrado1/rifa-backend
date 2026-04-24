@@ -9,6 +9,7 @@ type GameBoardProps = {
   warningMessage: string;
   lastBetAction: { playerId: string; action: BettingAction } | null;
   onStartRound: () => void;
+  onSetRoundStake: (value: number) => void;
   onBetAction: (action: BettingAction) => void;
   onPlayCard: (suit: string, rank: string) => void;
   sendingAction: boolean;
@@ -47,6 +48,7 @@ export function GameBoard({
   warningMessage,
   lastBetAction,
   onStartRound,
+  onSetRoundStake,
   onBetAction,
   onPlayCard,
   sendingAction,
@@ -79,6 +81,10 @@ export function GameBoard({
     table.players.length >= 2;
 
   const canBet = table.phase === 'BETTING_PHASE' && isMyTurn && !isDealing;
+  const canSetStake =
+    (table.phase === 'WAITING_PLAYERS' || table.phase === 'ROUND_END') &&
+    !sendingAction &&
+    !isDealing;
   const canPlayCard =
     table.phase === 'PLAYING_CARDS' &&
     isMyTurn &&
@@ -485,6 +491,20 @@ export function GameBoard({
       </section>
 
       <section className="action-dock" aria-label="Acoes da rodada">
+        <div className="stake-dock">
+          {[3, 6, 9, 12].map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={`btn btn-ghost ${table.roundStake === value ? 'is-selected' : ''}`}
+              onClick={() => onSetRoundStake(value)}
+              disabled={!canSetStake}
+            >
+              Boca {value}
+            </button>
+          ))}
+        </div>
+
         <button
           type="button"
           className="btn btn-primary"

@@ -8,17 +8,16 @@ export class Player {
   public isPlayingRound: boolean = false;
   public hasActed: boolean = false;
   public tricksWon: number = 0;
-  public hasPaid: boolean = false;
 
   public pendingPenalty: number = 0;
 
   constructor(
     public readonly id: string,
-    public readonly name: string,
+    public name: string,
+    public socketId: string,
   ) {}
 
   payCoins(amount: number): number {
-    this.hasPaid = true;
     if (this.coins >= amount) {
       this.coins -= amount;
       return amount;
