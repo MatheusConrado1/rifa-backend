@@ -126,6 +126,10 @@ export function TablePage() {
       );
     };
 
+    const onAutoAway = (payload: { mensagem?: string }) => {
+      setWarningMessage(payload?.mensagem ?? 'Jogador ausente removido da rodada.');
+    };
+
     const onBetActionProcessed = (payload: {
       playerId?: string;
       acao?: BettingAction;
@@ -143,6 +147,7 @@ export function TablePage() {
     socket.on('rodada_iniciada', onRoundStarted);
     socket.on('jogador_entrou', onPlayerJoined);
     socket.on('acao_aposta_processada', onBetActionProcessed);
+    socket.on('jogador_away_auto', onAutoAway);
     socket.on('error', onError);
 
     if (socket.connected) {
@@ -156,6 +161,7 @@ export function TablePage() {
       socket.off('rodada_iniciada', onRoundStarted);
       socket.off('jogador_entrou', onPlayerJoined);
       socket.off('acao_aposta_processada', onBetActionProcessed);
+      socket.off('jogador_away_auto', onAutoAway);
       socket.off('error', onError);
     };
   }, [app.auth.token, playerName, routeTableId]);

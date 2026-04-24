@@ -28,6 +28,8 @@ export class GameGateway
 
   private activeTables = new Map<string, Table>();
   private readonly TRICK_RESOLUTION_DELAY_MS = 1800;
+  private readonly AFK_TIMEOUT_MS = 20000;
+  private afkTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(private readonly jwtService: JwtService) {}
 
@@ -44,6 +46,70 @@ export class GameGateway
       throw new Error('Não autorizado.');
     }
     return userId;
+  }
+
+  private timerKey(tableId: string, playerId: string): string {
+    return `${tableId}:${playerId}`;
+  }
+
+  private clearAfkTimer(tableId: string, playerId: string): void {
+    const key = this.timerKey(tableId, playerId);
+    const timerId = this.afkTimers.get(key);
+    if (timerId != null) {
+      clearTimeout(timerId);
+      this.afkTimers.delete(key);
+    }
+  }
+
+  private clearAllTableAfkTimers(tableId: string): void {
+    for (const [key, timerId] of this.afkTimers.entries()) {
+      if (!key.startsWith(`${tableId}:`)) {
+        continue;
+      }
+      clearTimeout(timerId);
+      this.afkTimers.delete(key);
+    }
+  }
+
+  private scheduleAfkTimer(tableId: string, table: Table): void {
+    if (
+      table.phase !== GamePhase.BETTING_PHASE &&
+      table.phase !== GamePhase.PLAYING_CARDS
+    ) {
+      this.clearAllTableAfkTimers(tableId);
+      return;
+    }
+
+    const currentPlayer = table.players[table.currentTurnIndex];
+    if (!currentPlayer) {
+      return;
+    }
+
+    this.clearAllTableAfkTimers(tableId);
+
+    const key = this.timerKey(tableId, currentPlayer.id);
+    const timerId = setTimeout(() => {
+      const liveTable = this.activeTables.get(tableId);
+      if (!liveTable) {
+        return;
+      }
+
+      const stillCurrent = liveTable.players[liveTable.currentTurnIndex];
+      if (!stillCurrent || stillCurrent.id !== currentPlayer.id) {
+        this.scheduleAfkTimer(tableId, liveTable);
+        return;
+      }
+
+      liveTable.setPlayerAway(currentPlayer.id);
+      this.server.to(tableId).emit('jogador_away_auto', {
+        playerId: currentPlayer.id,
+        mensagem: `${currentPlayer.name} ficou ausente e foi removido da rodada atual.`,
+      });
+      this.broadcastTableState(liveTable);
+      this.scheduleAfkTimer(tableId, liveTable);
+    }, this.AFK_TIMEOUT_MS);
+
+    this.afkTimers.set(key, timerId);
   }
 
   private broadcastTableState(table: Table): void {
@@ -98,6 +164,7 @@ export class GameGateway
 
       table.setPlayerAway(player.id);
       this.broadcastTableState(table);
+      this.scheduleAfkTimer(table.id, table);
       break;
     }
   }
@@ -176,6 +243,7 @@ export class GameGateway
     try {
       table.startRound();
       console.log(`Rodada iniciada na mesa ${data.mesaId}!`);
+      this.scheduleAfkTimer(data.mesaId, table);
 
       for (const player of table.players) {
         this.server.to(player.socketId).emit('rodada_iniciada', {
@@ -207,6 +275,7 @@ export class GameGateway
     try {
       const userId = this.getAuthenticatedUserId(client);
       table.processBettingAction(userId, data.acao);
+      this.clearAfkTimer(data.mesaId, userId);
 
       this.server.to(data.mesaId).emit('acao_aposta_processada', {
         playerId: userId,
@@ -214,6 +283,7 @@ export class GameGateway
       });
 
       this.broadcastTableState(table);
+      this.scheduleAfkTimer(data.mesaId, table);
 
       return { status: 'sucesso' };
     } catch (error: any) {
@@ -238,13 +308,16 @@ export class GameGateway
     try {
       const userId = this.getAuthenticatedUserId(client);
       table.playCard(userId, data.suit, data.rank);
+      this.clearAfkTimer(data.mesaId, userId);
 
       this.broadcastTableState(table);
+      this.scheduleAfkTimer(data.mesaId, table);
 
       if (table.hasPendingTrickResolution()) {
         await this.sleep(this.TRICK_RESOLUTION_DELAY_MS);
         table.resolveCurrentTrick();
         this.broadcastTableState(table);
+        this.scheduleAfkTimer(data.mesaId, table);
       }
 
       return { status: 'sucesso' };
@@ -272,7 +345,10 @@ export class GameGateway
       const userId = this.getAuthenticatedUserId(client);
       table.setRoundStake(userId, data.valor);
       this.broadcastTableState(table);
-      return { status: 'sucesso', mensagem: `Boca ajustada para ${table.roundStake}.` };
+      return {
+        status: 'sucesso',
+        mensagem: `Boca ajustada para ${table.roundStake}.`,
+      };
     } catch (error: any) {
       return { status: 'erro', mensagem: error.message };
     }

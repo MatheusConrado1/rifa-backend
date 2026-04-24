@@ -21,6 +21,7 @@ export type PlayerState = {
   name: string;
   coins: number;
   seatStatus: 'ACTIVE' | 'DEAD' | 'AWAY' | 'SPECTATOR';
+  pendingReturn: boolean;
   lastDecision: BettingAction | null;
   isPlayingRound: boolean;
   hasActed: boolean;

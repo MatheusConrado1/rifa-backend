@@ -13,6 +13,7 @@ export class Player {
   public tricksWon: number = 0;
   public seatStatus: SeatStatus = 'ACTIVE';
   public lastDecision: RoundDecision = null;
+  public pendingReturn: boolean = false;
 
   public pendingPenalty: number = 0;
 

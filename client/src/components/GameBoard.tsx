@@ -445,7 +445,9 @@ export function GameBoard({
                       {player.seatStatus !== 'ACTIVE' ? (
                         <span className="tag tag-inactive">
                           {player.seatStatus === 'AWAY'
-                            ? 'away'
+                            ? player.pendingReturn
+                              ? 'volta na proxima'
+                              : 'away'
                             : player.seatStatus === 'DEAD'
                               ? 'morto'
                               : 'espectando'}

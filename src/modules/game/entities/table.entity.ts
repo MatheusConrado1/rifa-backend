@@ -1,5 +1,5 @@
 import { Deck } from './deck.entity';
-import { Player, SeatStatus } from './player.entity';
+import { Player } from './player.entity';
 import { Card, Suit } from './card.entity';
 
 export enum GamePhase {
@@ -88,6 +88,35 @@ export class Table {
     return this.players.filter((p) => p.seatStatus !== 'DEAD').length;
   }
 
+  private finalizeBettingIfNeeded(): void {
+    const allPlayersActed = this.players.every((p) => p.hasActed);
+    if (!allPlayersActed) {
+      return;
+    }
+
+    const activePlayers = this.players.filter((p) => p.isPlayingRound);
+
+    if (activePlayers.length === 0) {
+      const dealer = this.players[this.dealerIndex];
+      dealer.coins += this.pot;
+      this.pot = 0;
+      this.prepareNextRound();
+      return;
+    }
+
+    if (activePlayers.length === 1) {
+      const winner = activePlayers[0];
+      winner.coins += this.pot;
+      this.pot = 0;
+      this.prepareNextRound();
+      return;
+    }
+
+    this.phase = GamePhase.PLAYING_CARDS;
+    this.contestedPot = this.pot;
+    this.setNextActivePlayerTurn(this.dealerIndex);
+  }
+
   private activeSeatCount(): number {
     return this.players.filter((p) => this.canParticipateRound(p)).length;
   }
@@ -98,11 +127,18 @@ export class Table {
       existing.socketId = player.socketId;
       existing.name = player.name;
       if (existing.seatStatus !== 'DEAD') {
-        existing.seatStatus = 'ACTIVE';
+        if (this.phase === GamePhase.BETTING_PHASE || this.phase === GamePhase.PLAYING_CARDS) {
+          existing.seatStatus = 'AWAY';
+          existing.pendingReturn = true;
+          existing.isPlayingRound = false;
+          existing.hasActed = true;
+        } else {
+          existing.seatStatus = 'ACTIVE';
+          existing.pendingReturn = false;
+          existing.isPlayingRound = false;
+          existing.hasActed = false;
+        }
       }
-      existing.isPlayingRound = false;
-      existing.hasActed = false;
-      existing.lastDecision = null;
       return;
     }
 
@@ -115,6 +151,13 @@ export class Table {
   }
 
   startRound(): void {
+    for (const player of this.players) {
+      if (player.seatStatus === 'AWAY' && player.pendingReturn) {
+        player.seatStatus = 'ACTIVE';
+        player.pendingReturn = false;
+      }
+    }
+
     if (this.activeSeatCount() < 2) {
       throw new Error('Jogadores insuficientes para iniciar.');
     }
@@ -217,26 +260,8 @@ export class Table {
 
     currentPlayer.hasActed = true;
 
-    const allPlayersActed = this.players.every((p) => p.hasActed);
-
-    if (allPlayersActed) {
-      const activePlayers = this.players.filter((p) => p.isPlayingRound);
-
-      if (activePlayers.length === 0) {
-        const dealer = this.players[this.dealerIndex];
-        dealer.coins += this.pot;
-        this.pot = 0;
-        this.prepareNextRound();
-      } else if (activePlayers.length === 1) {
-        const winner = activePlayers[0];
-        winner.coins += this.pot;
-        this.pot = 0;
-        this.prepareNextRound();
-      } else {
-        this.phase = GamePhase.PLAYING_CARDS;
-        this.contestedPot = this.pot;
-        this.setNextActivePlayerTurn(this.dealerIndex);
-      }
+    if (this.players.every((p) => p.hasActed)) {
+      this.finalizeBettingIfNeeded();
     } else {
       const nextDecisionIndex = this.findNextIndex(
         this.currentTurnIndex,
@@ -485,6 +510,7 @@ export class Table {
           name: p.name,
           coins: p.coins,
           seatStatus: p.seatStatus,
+          pendingReturn: p.pendingReturn,
           lastDecision: p.lastDecision,
           isPlayingRound: p.isPlayingRound,
           hasActed: p.hasActed,
@@ -542,6 +568,7 @@ export class Table {
     }
 
     player.seatStatus = 'AWAY';
+    player.pendingReturn = true;
     player.isPlayingRound = false;
     player.hasActed = true;
     player.hand = [];
@@ -556,6 +583,29 @@ export class Table {
         if (nextDecisionIndex !== -1) {
           this.currentTurnIndex = nextDecisionIndex;
         }
+      }
+
+      this.finalizeBettingIfNeeded();
+    }
+
+    if (this.phase === GamePhase.PLAYING_CARDS) {
+      const pendingPlayer = this.players[this.currentTurnIndex];
+      if (pendingPlayer?.id === player.id) {
+        this.setNextActivePlayerTurn(this.currentTurnIndex);
+      }
+
+      const activePlayers = this.players.filter((candidate) => candidate.isPlayingRound);
+      if (activePlayers.length <= 1) {
+        if (activePlayers.length === 1) {
+          activePlayers[0].coins += this.pot;
+        } else {
+          const dealer = this.players[this.dealerIndex];
+          if (dealer) {
+            dealer.coins += this.pot;
+          }
+        }
+        this.pot = 0;
+        this.prepareNextRound();
       }
     }
   }
