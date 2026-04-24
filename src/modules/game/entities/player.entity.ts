@@ -1,6 +1,6 @@
 import { Card } from './card.entity';
 
-const STARTING_COINS = 10;
+const STARTING_COINS = 4;
 
 export type SeatStatus = 'ACTIVE' | 'DEAD' | 'AWAY' | 'SPECTATOR';
 export type RoundDecision = 'PLAY' | 'FOLD' | 'MACACA' | null;
