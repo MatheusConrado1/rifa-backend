@@ -397,6 +397,7 @@ export function GameBoard({
                   isPendingWinner ? 'trick-winner' : '',
                   isLastWinner ? 'last-winner' : '',
                   isMePlayer ? 'is-me' : '',
+                  player.seatStatus !== 'ACTIVE' ? 'is-inactive' : '',
                 ]
                   .filter(Boolean)
                   .join(' ');
@@ -432,6 +433,24 @@ export function GameBoard({
                     <div className="tag-row">
                       {isMePlayer ? <span className="tag">voce</span> : null}
                       {isTurn ? <span className="tag tag-turn">vez</span> : null}
+                      {player.lastDecision ? (
+                        <span className="tag tag-action">
+                          {player.lastDecision === 'PLAY'
+                            ? 'jogou'
+                            : player.lastDecision === 'FOLD'
+                              ? 'desistiu'
+                              : 'pegou macaca'}
+                        </span>
+                      ) : null}
+                      {player.seatStatus !== 'ACTIVE' ? (
+                        <span className="tag tag-inactive">
+                          {player.seatStatus === 'AWAY'
+                            ? 'away'
+                            : player.seatStatus === 'DEAD'
+                              ? 'morto'
+                              : 'espectando'}
+                        </span>
+                      ) : null}
                       {isPendingWinner ? <span className="tag tag-winner">venceu vaza</span> : null}
                       {isLastWinner ? <span className="tag tag-last-winner">ultima vaza</span> : null}
                     </div>

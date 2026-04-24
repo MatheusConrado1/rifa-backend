@@ -20,6 +20,8 @@ export type PlayerState = {
   id: string;
   name: string;
   coins: number;
+  seatStatus: 'ACTIVE' | 'DEAD' | 'AWAY' | 'SPECTATOR';
+  lastDecision: BettingAction | null;
   isPlayingRound: boolean;
   hasActed: boolean;
   pendingPenalty: number;

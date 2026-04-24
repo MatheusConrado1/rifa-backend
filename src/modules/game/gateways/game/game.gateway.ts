@@ -89,6 +89,17 @@ export class GameGateway
 
   handleDisconnect(client: Socket) {
     console.log(`Jogador desconectado: ${client.id}`);
+
+    for (const table of this.activeTables.values()) {
+      const player = table.players.find((p) => p.socketId === client.id);
+      if (!player) {
+        continue;
+      }
+
+      table.setPlayerAway(player.id);
+      this.broadcastTableState(table);
+      break;
+    }
   }
 
   @SubscribeMessage('entrar_na_mesa')
