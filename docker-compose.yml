@@ -1,0 +1,45 @@
+version: '3.9'
+
+services:
+  rifa-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rifa-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: zxcasdqwe
+      DB_NAME: rifa
+      DB_SYNC: 'false'
+      JWT_SECRET: jorgeeduardo
+      JWT_EXPIRES_IN: 7d
+      CORS_ORIGINS: https://rifa.mconrado.com.br
+    ports:
+      - '3000:3000'
+    networks:
+      - rifa-net
+
+  rifa-frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: https://rifa-api.mconrado.com.br
+        VITE_SOCKET_URL: https://rifa-api.mconrado.com.br
+    container_name: rifa-frontend
+    restart: unless-stopped
+    ports:
+      - '8080:80'
+    networks:
+      - rifa-net
+    depends_on:
+      - rifa-backend
+
+networks:
+  rifa-net:
+    external: true

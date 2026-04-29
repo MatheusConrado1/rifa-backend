@@ -1,6 +1,9 @@
 import { Card } from './card.entity';
 
-const STARTING_COINS = 10;
+const STARTING_COINS = 4;
+
+export type SeatStatus = 'ACTIVE' | 'DEAD' | 'AWAY' | 'SPECTATOR';
+export type RoundDecision = 'PLAY' | 'FOLD' | 'MACACA' | null;
 
 export class Player {
   public hand: Card[] = [];
@@ -8,17 +11,19 @@ export class Player {
   public isPlayingRound: boolean = false;
   public hasActed: boolean = false;
   public tricksWon: number = 0;
-  public hasPaid: boolean = false;
+  public seatStatus: SeatStatus = 'ACTIVE';
+  public lastDecision: RoundDecision = null;
+  public pendingReturn: boolean = false;
 
   public pendingPenalty: number = 0;
 
   constructor(
     public readonly id: string,
-    public readonly name: string,
+    public name: string,
+    public socketId: string,
   ) {}
 
   payCoins(amount: number): number {
-    this.hasPaid = true;
     if (this.coins >= amount) {
       this.coins -= amount;
       return amount;
